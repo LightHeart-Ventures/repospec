@@ -52,6 +52,52 @@ def log_step(step_num, total, msg):
     print(f"{Colors.YELLOW}[{step_num}/{total}]{Colors.NC} {msg}")
 
 
+def check_auth():
+    """Verify Claude auth is available and report which method will be used.
+
+    The `claude` CLI authenticates via (in order of precedence here):
+      1. CLAUDE_CODE_OAUTH_TOKEN  - Claude subscription OAuth token (no API
+         usage-limit billing; recommended)
+      2. ANTHROPIC_API_KEY        - raw API key (subject to API usage limits)
+
+    A run that relies on an invalid or usage-capped API key fails with HTTP 401
+    (invalid x-api-key) or HTTP 400 (usage limit reached). Preferring the OAuth
+    token avoids both. We only warn here; the CLI does the actual auth.
+    """
+    if os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"):
+        log_info("Auth: using CLAUDE_CODE_OAUTH_TOKEN (Claude subscription / OAuth)")
+        return "oauth"
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        log_warning(
+            "Auth: using ANTHROPIC_API_KEY. If runs fail with 401 (invalid "
+            "x-api-key) or 400 (usage limit reached), set CLAUDE_CODE_OAUTH_TOKEN "
+            "instead (run: claude setup-token)."
+        )
+        return "api_key"
+    log_warning(
+        "No CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY in the environment. "
+        "Falling back to the `claude` CLI's own stored credentials (claude auth). "
+        "If calls fail, run `claude setup-token` or export CLAUDE_CODE_OAUTH_TOKEN."
+    )
+    return "cli"
+
+
+def claude_cmd(repo_path=None):
+    """Build the non-interactive `claude` invocation.
+
+    -p / --print           : non-interactive print mode (the prior version
+                             shelled out to bare `claude`, which starts an
+                             INTERACTIVE session and hangs/times out when piped).
+    --add-dir              : grant the agent read access to the target repo.
+    --permission-mode      : run tools without interactive approval prompts.
+    """
+    cmd = ["claude", "-p", "--permission-mode", "bypassPermissions"]
+    if repo_path is not None:
+        cmd += ["--add-dir", str(repo_path)]
+    return cmd
+
+
+
 def validate_repo(repo_path):
     """Validate that the path is a valid directory."""
     repo_path = Path(repo_path).resolve()
@@ -184,7 +230,7 @@ Generate the .repospec.json now. Output ONLY valid JSON."""
     
     try:
         result = subprocess.run(
-            ["claude"],
+            claude_cmd(repo_path),
             input=generation_prompt,
             capture_output=True,
             text=True,
@@ -285,7 +331,7 @@ For each task, work systematically using .repospec.json as your starting point. 
 
     try:
         result = subprocess.run(
-            ["claude"],
+            claude_cmd(repo_path),
             input=prompt,
             capture_output=True,
             text=True,
@@ -315,7 +361,7 @@ Work systematically without any pre-generated metadata. Be specific and referenc
 
     try:
         result = subprocess.run(
-            ["claude"],
+            claude_cmd(repo_path),
             input=prompt,
             capture_output=True,
             text=True,
@@ -454,6 +500,9 @@ def main():
     print(f"{Colors.YELLOW}Target repository:{Colors.NC} {repo_path}")
     print(f"{Colors.YELLOW}Output directory:{Colors.NC} {results_dir}")
     print(f"{Colors.YELLOW}Timeout per run:{Colors.NC} {args.timeout}s")
+    print("")
+    
+    check_auth()
     print("")
     
     repospec, repospec_file = generate_repospec_json(repo_path, results_dir)
