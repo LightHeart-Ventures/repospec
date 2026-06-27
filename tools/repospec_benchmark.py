@@ -329,7 +329,7 @@ Work systematically without any pre-generated metadata. Be specific and referenc
         sys.exit(1)
 
 
-def analyze_response(response, label):
+def analyze_response(response, label, repo_path=None):
     """Analyze agent response metrics."""
     lines = response.split('\n')
     words = response.split()
@@ -365,6 +365,37 @@ def analyze_response(response, label):
     for pattern in tool_patterns:
         usage["tool_calls"] += len(re.findall(pattern, response))
     
+    # Extract and validate file paths
+    accuracy = {
+        "valid_paths": 0,
+        "invalid_paths": 0,
+        "path_accuracy": 0.0
+    }
+    
+    if repo_path:
+        # Find repo-relative paths in response
+        path_pattern = r'(?:[a-zA-Z_][a-zA-Z0-9_/\-\.]*\.(?:go|py|js|ts|java|rs|rb|php|cs|c|cpp|h|json|yaml|yml|toml|md))'
+        paths_found = re.findall(path_pattern, response)
+        
+        if paths_found:
+            repo_files = set()
+            for root, dirs, files in os.walk(repo_path):
+                if ".git" in root or "node_modules" in root or "vendor" in root:
+                    continue
+                for f in files:
+                    rel_path = os.path.relpath(os.path.join(root, f), repo_path)
+                    repo_files.add(rel_path)
+            
+            for path in paths_found:
+                if path in repo_files:
+                    accuracy["valid_paths"] += 1
+                else:
+                    accuracy["invalid_paths"] += 1
+            
+            total = accuracy["valid_paths"] + accuracy["invalid_paths"]
+            if total > 0:
+                accuracy["path_accuracy"] = (accuracy["valid_paths"] / total) * 100
+    
     return {
         "label": label,
         "response_length": len(response),
@@ -372,7 +403,8 @@ def analyze_response(response, label):
         "words": len(words),
         "tasks_mentioned": tasks_mentioned,
         "avg_words_per_task": len(words) // max(1, tasks_mentioned),
-        "usage": usage
+        "usage": usage,
+        "accuracy": accuracy
     }
 
 
@@ -441,8 +473,8 @@ def print_results(results_dir, with_spec_output, without_spec_output, repo_name,
     """Print and save benchmark results."""
     log_step(4, 4, "Analyzing results...")
     
-    with_metrics = analyze_response(with_spec_output, "WITH .repospec.json")
-    without_metrics = analyze_response(without_spec_output, "WITHOUT .repospec.json")
+    with_metrics = analyze_response(with_spec_output, "WITH .repospec.json", repo_path)
+    without_metrics = analyze_response(without_spec_output, "WITHOUT .repospec.json", repo_path)
     
     repo_stats = None
     if repo_path:
@@ -507,6 +539,30 @@ def print_results(results_dir, with_spec_output, without_spec_output, repo_name,
         
         f.write(f"| Tool Calls | {with_usage['tool_calls']} | {without_usage['tool_calls']} | {with_usage['tool_calls'] - without_usage['tool_calls']:+d} |\n")
         
+        f.write("\n## Path Accuracy\n\n")
+        with_accuracy = with_metrics.get("accuracy", {})
+        without_accuracy = without_metrics.get("accuracy", {})
+        
+        if with_accuracy.get("valid_paths") or without_accuracy.get("valid_paths"):
+            f.write("| Metric | WITH .repospec.json | WITHOUT .repospec.json | Difference |\n")
+            f.write("|--------|---------------------|----------------------|------------|\n")
+            
+            with_valid = with_accuracy.get("valid_paths", 0)
+            with_invalid = with_accuracy.get("invalid_paths", 0)
+            without_valid = without_accuracy.get("valid_paths", 0)
+            without_invalid = without_accuracy.get("invalid_paths", 0)
+            
+            with_total = with_valid + with_invalid
+            without_total = without_valid + without_invalid
+            
+            f.write(f"| Valid Path References | {with_valid} | {without_valid} | {with_valid - without_valid:+d} |\n")
+            f.write(f"| Invalid Path References | {with_invalid} | {without_invalid} | {with_invalid - without_invalid:+d} |\n")
+            
+            with_pct = (with_valid / with_total * 100) if with_total > 0 else 0
+            without_pct = (without_valid / without_total * 100) if without_total > 0 else 0
+            
+            f.write(f"| Accuracy | {with_pct:.1f}% | {without_pct:.1f}% | {with_pct - without_pct:+.1f}% |\n")
+        
         f.write("\n## Task Completion\n\n")
         f.write(f"- **WITH .repospec.json:** {with_metrics['tasks_mentioned']}/8 tasks mentioned\n")
         f.write(f"- **WITHOUT .repospec.json:** {without_metrics['tasks_mentioned']}/8 tasks mentioned\n")
@@ -560,6 +616,24 @@ def print_results(results_dir, with_spec_output, without_spec_output, repo_name,
     if with_metrics['usage']['tool_calls'] < without_metrics['usage']['tool_calls']:
         delta = without_metrics['usage']['tool_calls'] - with_metrics['usage']['tool_calls']
         print(f"  {Colors.GREEN}✓ .repospec.json reduced tool calls by {delta}{Colors.NC}")
+    
+    # Path accuracy
+    with_accuracy = with_metrics.get("accuracy", {})
+    without_accuracy = without_metrics.get("accuracy", {})
+    
+    if with_accuracy.get("valid_paths") or without_accuracy.get("valid_paths"):
+        print(f"\n{Colors.YELLOW}Path Accuracy:{Colors.NC}")
+        with_total = with_accuracy.get("valid_paths", 0) + with_accuracy.get("invalid_paths", 0)
+        without_total = without_accuracy.get("valid_paths", 0) + without_accuracy.get("invalid_paths", 0)
+        
+        with_pct = (with_accuracy.get("valid_paths", 0) / with_total * 100) if with_total > 0 else 0
+        without_pct = (without_accuracy.get("valid_paths", 0) / without_total * 100) if without_total > 0 else 0
+        
+        print(f"  - WITH .repospec.json: {with_pct:.1f}% accuracy ({with_accuracy.get('valid_paths', 0)}/{with_total} paths)")
+        print(f"  - WITHOUT .repospec.json: {without_pct:.1f}% accuracy ({without_accuracy.get('valid_paths', 0)}/{without_total} paths)")
+        
+        if with_pct > without_pct:
+            print(f"  {Colors.GREEN}✓ .repospec.json improved path accuracy by {with_pct - without_pct:.1f}%{Colors.NC}")
     
     print("")
 
