@@ -17,9 +17,19 @@ This tool:
 ## Prerequisites
 
 - Python 3.7+
-- `claude` CLI installed: `pip install anthropic-cli`
+- The `anthropic` Python SDK (installed automatically by the wrapper, or manually via `pip install -r requirements.txt`)
+- An `ANTHROPIC_API_KEY` environment variable
 - `curl` (for fetching PROMPT.md)
 - Read access to the target repository
+
+The `./repospec_benchmark.sh` wrapper creates a local `.venv` and installs
+dependencies on first run, so no manual setup is required. To install the
+dependencies yourself instead:
+
+```bash
+pip install -r requirements.txt
+python3 repospec_benchmark.py /path/to/repo
+```
 
 ## Output
 

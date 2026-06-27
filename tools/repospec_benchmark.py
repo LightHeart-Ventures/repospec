@@ -22,7 +22,18 @@ import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
-import anthropic
+
+try:
+    import anthropic
+except ModuleNotFoundError:
+    sys.stderr.write(
+        "Error: the 'anthropic' package is not installed.\n"
+        "Install it with:\n"
+        "    pip install -r tools/requirements.txt\n"
+        "or run via the wrapper which sets up a virtualenv automatically:\n"
+        "    ./tools/repospec_benchmark.sh <repo>\n"
+    )
+    sys.exit(1)
 
 
 class Colors:

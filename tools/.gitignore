@@ -1,0 +1,5 @@
+# Local virtualenv created by repospec_benchmark.sh
+.venv/
+
+# Benchmark output directory
+repospec-benchmark/
