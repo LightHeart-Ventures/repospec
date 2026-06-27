@@ -106,6 +106,18 @@
     "run": "make test / (language-specific test runner once tool language is chosen)"
   },
 
+  "infrastructure": [
+    {
+      "name": "ci",
+      "kind": "ci",
+      "provider": "github-actions",
+      "path": ".github/workflows/",
+      "purpose": "Validate .repospec.json against schema.json and check referenced paths exist",
+      "triggers": ["push", "pull_request"],
+      "tags": ["ci", "validation"]
+    }
+  ],
+
   "dependencies": [
     {
       "name": "json-schema",

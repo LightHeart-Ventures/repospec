@@ -171,6 +171,48 @@
     "run": "npm test && npm run test:integration"
   },
 
+  "infrastructure": [
+    {
+      "name": "ci",
+      "kind": "ci",
+      "provider": "github-actions",
+      "path": ".github/workflows/ci.yml",
+      "purpose": "Lint, run Jest tests, and build the client on every push and PR",
+      "triggers": ["push", "pull_request"],
+      "tags": ["ci"]
+    },
+    {
+      "name": "deploy",
+      "kind": "cd",
+      "provider": "github-actions",
+      "path": ".github/workflows/deploy.yml",
+      "purpose": "Build the Docker image and deploy to the cluster on push to main",
+      "triggers": ["push: main"],
+      "environments": ["staging", "production"],
+      "tags": ["cd"]
+    },
+    {
+      "name": "app",
+      "kind": "orchestration",
+      "provider": "kubernetes",
+      "path": "deploy/k8s/",
+      "purpose": "Helm chart: Deployment, Service, HPA, and Ingress for web + worker",
+      "deploy": "helm upgrade --install webapp deploy/k8s/chart",
+      "tags": ["kubernetes", "helm"]
+    },
+    {
+      "name": "database",
+      "kind": "iac",
+      "provider": "terraform",
+      "path": "infra/terraform/",
+      "purpose": "Managed PostgreSQL instance and Redis for the Bull queue",
+      "manages": ["aws_db_instance", "aws_elasticache_cluster"],
+      "environments": ["staging", "production"],
+      "deploy": "terraform -chdir=infra/terraform apply",
+      "tags": ["aws", "data"]
+    }
+  ],
+
   "dependencies": [
     {
       "name": "express",
