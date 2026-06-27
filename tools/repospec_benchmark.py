@@ -346,12 +346,77 @@ def analyze_response(response, label):
     }
 
 
-def print_results(results_dir, with_spec_output, without_spec_output, repo_name):
+def quantify_repo(repo_path):
+    """Gather statistics about the repository."""
+    stats = {
+        "total_files": 0,
+        "total_dirs": 0,
+        "total_size_mb": 0,
+        "languages": {},
+        "source_files": 0,
+        "test_files": 0,
+    }
+    
+    source_exts = {
+        ".py": "Python",
+        ".js": "JavaScript",
+        ".ts": "TypeScript",
+        ".go": "Go",
+        ".rs": "Rust",
+        ".java": "Java",
+        ".c": "C",
+        ".cpp": "C++",
+        ".rb": "Ruby",
+        ".php": "PHP",
+        ".cs": "C#",
+    }
+    
+    try:
+        for root, dirs, files in os.walk(repo_path):
+            if ".git" in root or "node_modules" in root or "vendor" in root:
+                continue
+            
+            stats["total_dirs"] += len(dirs)
+            
+            for f in files:
+                stats["total_files"] += 1
+                
+                file_path = Path(root) / f
+                ext = file_path.suffix.lower()
+                
+                # Track file size
+                try:
+                    stats["total_size_mb"] += file_path.stat().st_size / (1024 * 1024)
+                except:
+                    pass
+                
+                # Track language
+                if ext in source_exts:
+                    lang = source_exts[ext]
+                    stats["languages"][lang] = stats["languages"].get(lang, 0) + 1
+                    stats["source_files"] += 1
+                
+                # Track test files
+                if "test" in f.lower() or "spec" in f.lower():
+                    stats["test_files"] += 1
+    
+    except Exception as e:
+        log_warning(f"Error scanning repo: {e}")
+    
+    stats["total_size_mb"] = round(stats["total_size_mb"], 2)
+    return stats
+
+
+def print_results(results_dir, with_spec_output, without_spec_output, repo_name, repo_path=None):
     """Print and save benchmark results."""
     log_step(4, 4, "Analyzing results...")
     
     with_metrics = analyze_response(with_spec_output, "WITH .repospec.json")
     without_metrics = analyze_response(without_spec_output, "WITHOUT .repospec.json")
+    
+    repo_stats = None
+    if repo_path:
+        repo_stats = quantify_repo(repo_path)
     
     results_file = results_dir / "RESULTS.md"
     
@@ -359,6 +424,21 @@ def print_results(results_dir, with_spec_output, without_spec_output, repo_name)
         f.write("# .repospec.json Benchmark Results\n\n")
         f.write(f"**Repository:** {repo_name}\n")
         f.write(f"**Date:** {datetime.now().isoformat()}\n\n")
+        
+        if repo_stats:
+            f.write("## Repository Statistics\n\n")
+            f.write(f"- **Total Files:** {repo_stats['total_files']}\n")
+            f.write(f"- **Total Directories:** {repo_stats['total_dirs']}\n")
+            f.write(f"- **Total Size:** {repo_stats['total_size_mb']} MB\n")
+            f.write(f"- **Source Files:** {repo_stats['source_files']}\n")
+            f.write(f"- **Test Files:** {repo_stats['test_files']}\n")
+            
+            if repo_stats['languages']:
+                f.write(f"\n**Languages:**\n")
+                for lang, count in sorted(repo_stats['languages'].items(), key=lambda x: x[1], reverse=True):
+                    f.write(f"- {lang}: {count} files\n")
+            
+            f.write("\n")
         
         f.write("## Metrics\n\n")
         f.write("| Metric | WITH .repospec.json | WITHOUT .repospec.json | Difference |\n")
@@ -396,7 +476,17 @@ def print_results(results_dir, with_spec_output, without_spec_output, repo_name)
     print("")
     print(f"{Colors.YELLOW}Results saved to:{Colors.NC} {results_dir}")
     print("")
-    print(f"{Colors.YELLOW}Summary:{Colors.NC}")
+    
+    if repo_stats:
+        print(f"{Colors.YELLOW}Repository Stats:{Colors.NC}")
+        print(f"  - Files: {repo_stats['total_files']} | Dirs: {repo_stats['total_dirs']} | Size: {repo_stats['total_size_mb']} MB")
+        print(f"  - Source: {repo_stats['source_files']} files | Tests: {repo_stats['test_files']} files")
+        if repo_stats['languages']:
+            langs = ", ".join([f"{k} ({v})" for k, v in sorted(repo_stats['languages'].items(), key=lambda x: x[1], reverse=True)[:3]])
+            print(f"  - Top languages: {langs}")
+        print("")
+    
+    print(f"{Colors.YELLOW}Benchmark Summary:{Colors.NC}")
     print(f"  WITH .repospec.json:")
     print(f"    - Words: {with_metrics['words']}")
     print(f"    - Tasks addressed: {with_metrics['tasks_mentioned']}/8")
@@ -473,7 +563,7 @@ def main():
     
     log_success("Both agents completed")
     
-    print_results(results_dir, with_output, without_output, repo_path.name)
+    print_results(results_dir, with_output, without_output, repo_path.name, repo_path)
 
 
 if __name__ == "__main__":
