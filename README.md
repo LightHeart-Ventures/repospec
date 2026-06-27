@@ -1,40 +1,61 @@
 # repospec
 
-A standard metadata format for AI agents to efficiently navigate and understand repository structure, architecture, and organization.
+**A metadata standard that lets AI agents understand a repository by reading one file instead of crawling thousands.**
 
-Instead of scanning thousands of files, agents read a single `.repospec.json` file at the repo root and get a curated index of entry points, modules, patterns, and features.
+An agent drops a single `.repospec.json` at the repo root and gets a curated index of entry points, modules, patterns, features, and conventions — a map of *intent and architecture*, not just symbols.
 
-## Quick Start
+---
 
-1. **Understand the format:** [SPEC.md](SPEC.md) — complete format definition with examples
-2. **Agent using `.repospec.json`?** [AGENT_DISCOVERY_GUIDE.md](AGENT_DISCOVERY_GUIDE.md) — how agents discover, understand, and use the metadata
-3. **Generate `.repospec.json`:** [PROMPT.md](PROMPT.md) — prompts to generate metadata from your repo
-4. **Validate your `.repospec.json`:** Use `schema.json` with any JSON Schema validator
-5. **Examples:** Check `examples/` for sample `.repospec.json` files for different project types
+## What
 
-## The Problem
+`.repospec.json` is a small, schema-validated JSON file at the repository root. It describes a codebase at the **module/feature** level:
 
-AI agents waste time and tokens on **rediscovery**:
-- Searching for entry points
-- Inferring module structure
-- Finding code relevant to a feature
-- Re-deriving architectural decisions
-
-Existing tools (LSP, SCIP, Bazel, Nx) solve overlapping but different problems. repospec fills the gap at the **intent level** — helping agents orient themselves at module/feature granularity.
-
-## Format Overview
-
-A `.repospec.json` file at the repo root contains:
-
-- **`entrypoints`** — Where execution starts (services, CLIs, workers)
-- **`modules`** — Logical modules and their purpose
-- **`patterns`** — Cross-cutting concerns (auth, logging, error-handling)
-- **`key_files`** — Important files by category
-- **`features`** — Feature flows traced through the code
-- **`testing`** — Test structure and conventions
-- **`dependencies`** — Notable third-party libraries and why they matter
+| Section | Answers |
+|---------|---------|
+| `entrypoints` | Where does execution start? (services, CLIs, workers) |
+| `modules` | What are the logical pieces and how do they depend on each other? |
+| `patterns` | What are the cross-cutting conventions? (auth, logging, errors) |
+| `key_files` | Where are config, migrations, CI, API schemas? |
+| `features` | How does a user-facing flow move through the code, end to end? |
+| `testing` | How are tests organized and run? |
+| `dependencies` | Which third-party libs matter, and why? |
 
 All paths are repo-relative; all references use stable anchors (function names, not line numbers).
+
+## Why
+
+AI agents waste time and tokens on **rediscovery** every session — searching for entry points, inferring module structure, hunting for the code behind a feature, and re-deriving architectural decisions. They also **hallucinate file paths** that don't exist.
+
+Existing tools solve adjacent problems: LSP/SCIP find symbols, Bazel/Nx describe the build. repospec fills the gap at the **intent level**, giving an agent a trustworthy orientation map before it touches a single file.
+
+### Benchmark: does it actually help?
+
+We ran the bundled benchmark on [**Ghost**](https://github.com/TryGhost/Ghost) (7,181 files, 66.5 MB, JS/TS) — two agents answer the same 8 code-navigation tasks, one *with* `.repospec.json` in context and one *without*. Across 4 runs:
+
+| Metric | WITH `.repospec.json` | WITHOUT | Result |
+|--------|----------------------|---------|--------|
+| **Valid file-path references** (accuracy) | ~23% avg (peak 34%) | ~1.4% avg | **~16× more accurate** |
+| Valid paths cited (per run) | 7–25 | 0–1 | far more real paths |
+| Invalid/hallucinated paths | consistently lower | higher every run | fewer hallucinations |
+| Tasks addressed | 8 / 8 | 8 / 8 | both cover the work |
+| Extra input tokens to load the spec | +2.4k–3k | — | the cost of the map |
+
+**Takeaway:** an agent given `.repospec.json` points at *real* files an order of magnitude more often and hallucinates fewer paths. The trade-off is a few thousand input tokens to load the map — cheap next to the cost of chasing wrong paths.
+
+> Numbers come from the reference benchmark in [`tools/`](tools/README.md). It's a pure-navigation benchmark (no live tool execution yet) — see the [roadmap](tools/BENCHMARK_ROADMAP.md) for planned task-correctness and tool-call metrics.
+
+## How
+
+1. **Generate** a `.repospec.json` for your repo — feed [PROMPT.md](PROMPT.md) to an agent (Claude, Copilot, etc.) pointed at your codebase.
+2. **Validate** it against the schema:
+   ```bash
+   make validate          # validates ./.repospec.json against schema.json
+   make examples          # validates everything in examples/
+   ```
+3. **Commit** it to the repo root so every agent and teammate benefits.
+4. **Maintain** it — auto-generate the mechanical sections (paths, imports) in CI; hand-write the rationale once and update it as the code evolves.
+
+Agents discovering a `.repospec.json` for the first time should read **[AGENT_DISCOVERY_GUIDE.md](AGENT_DISCOVERY_GUIDE.md)** — how to find, validate, use, and sanity-check the metadata.
 
 ## Example
 
@@ -45,87 +66,63 @@ All paths are repo-relative; all references use stable anchors (function names, 
   "summary": "Payment processing and order management",
 
   "entrypoints": [
-    {
-      "name": "api-gateway",
-      "kind": "service",
-      "path": "cmd/gateway/main.go",
-      "purpose": "HTTP edge; routes to internal services"
-    }
+    { "name": "api-gateway", "kind": "service", "path": "cmd/gateway/main.go",
+      "purpose": "HTTP edge; routes to internal services" }
   ],
 
   "modules": [
-    {
-      "id": "checkout",
-      "path": "internal/checkout/",
-      "purpose": "Orchestrates the checkout flow",
-      "depends_on": ["store", "payments"]
-    }
+    { "id": "checkout", "path": "internal/checkout/",
+      "purpose": "Orchestrates the checkout flow", "depends_on": ["store", "payments"] }
   ],
 
   "features": [
-    {
-      "name": "place-order",
-      "description": "User completes purchase",
+    { "name": "place-order", "description": "User completes purchase",
       "flow": [
-        { "step": "entry", "file": "cmd/gateway/routes.go", "fn": "registerCheckout" },
-        { "step": "handler", "file": "internal/checkout/handler.go", "fn": "handleCheckout" },
-        { "step": "logic", "file": "internal/checkout/service.go", "fn": "CompleteOrder" },
-        { "step": "persistence", "file": "internal/store/orders.go", "fn": "CreateOrder" }
-      ]
-    }
+        { "step": "entry",       "file": "cmd/gateway/routes.go",     "fn": "registerCheckout" },
+        { "step": "handler",     "file": "internal/checkout/handler.go", "fn": "handleCheckout" },
+        { "step": "logic",       "file": "internal/checkout/service.go", "fn": "CompleteOrder" },
+        { "step": "persistence", "file": "internal/store/orders.go",   "fn": "CreateOrder" }
+      ] }
   ]
 }
 ```
 
-An agent reads this once and knows:
-- How to run the service
-- Which modules exist and what they do
-- How a feature flows through the code
-- Where to start exploring
+From this one file an agent knows how to run the service, which modules exist and what they do, how a feature flows through the code, and where to start exploring.
 
-## Maintenance
+## Repository layout
 
-- **Generated sections** (paths, imports): auto-generated from code, regenerated in CI
-- **Hand-written sections** (purpose, rationale): written once, updated as the codebase evolves
-- **CI validation**: schema validation + freshness checks on every commit
-- **Self-healing**: agents fix contradictions they discover
+| Path | What it is |
+|------|------------|
+| [SPEC.md](SPEC.md) | Complete format definition with examples and the maintenance strategy |
+| [schema.json](schema.json) | JSON Schema — validate any `.repospec.json` against it |
+| [PROMPT.md](PROMPT.md) | Prompts to generate (and discover) `.repospec.json` |
+| [AGENT_DISCOVERY_GUIDE.md](AGENT_DISCOVERY_GUIDE.md) | How agents find, interpret, and verify the metadata |
+| [`examples/`](examples/) | Sample `.repospec.json` files (Go service, Node app) |
+| [`tools/`](tools/README.md) | Reference benchmark that measures the impact on agent navigation |
+| [.repospec.json](.repospec.json) | This repo's own metadata (dogfooding) |
+
+## Maintenance strategy
+
+- **Generated sections** (paths, imports): auto-generated from code, regenerated in CI.
+- **Hand-written sections** (purpose, rationale): written once, updated as the codebase evolves.
+- **CI validation**: schema validation + freshness checks on every commit.
+- **Self-healing**: agents fix contradictions they discover and flag stale entries.
 
 See [SPEC.md](SPEC.md#maintenance-strategy) for details.
 
-## Tooling
-
-Reference implementations for:
-- **Validator**: Check `.repospec.json` against schema and validate file paths
-- **Generator**: Auto-generate mechanical sections from code
-- **Examples**: `.repospec.json` files for common project types (Go, Node.js, Python, Rust)
-
-See `tools/` directory.
-
 ## FAQ
 
-**Why not just use LSP / SCIP / Bazel?**  
+**Why not just use LSP / SCIP / Bazel?**
 LSP finds symbols; Bazel describes the build. repospec describes *intent and architecture at the module level*. They're complementary.
 
-**How do I keep `.repospec.json` up to date?**  
-Split the file: auto-generate paths/imports, hand-write purpose/rationale. CI checks for freshness.
+**How do I keep `.repospec.json` up to date?**
+Split the file: auto-generate paths/imports, hand-write purpose/rationale, and let CI check freshness.
 
-**Is this standardized?**  
+**Is this standardized?**
 It's an open-source format with a reference schema. Adoption is voluntary; no central registry (yet).
 
-**Can I use this for a monorepo?**  
-Yes. Define `modules` for each service/package. Each module can have its own `entrypoints` and `features`.
-
-## Benchmark Tool
-
-Measure the impact of `.repospec.json` on agent code navigation:
-
-```bash
-./tools/repospec_benchmark.sh /path/to/repo
-```
-
-This tool generates `.repospec.json` for any repository, creates 8 code-finding test tasks, and runs two agents in parallel — one WITH the metadata, one without — to compare efficiency and accuracy.
-
-See [`tools/README.md`](tools/README.md) for details.
+**Can I use this for a monorepo?**
+Yes. Define `modules` per service/package; each can have its own `entrypoints` and `features`.
 
 ## Contributing
 
