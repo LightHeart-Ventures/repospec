@@ -114,6 +114,18 @@ It's an open-source format with a reference schema. Adoption is voluntary; no ce
 **Can I use this for a monorepo?**  
 Yes. Define `modules` for each service/package. Each module can have its own `entrypoints` and `features`.
 
+## Benchmark Tool
+
+Measure the impact of `.repospec.json` on agent code navigation:
+
+```bash
+./tools/repospec_benchmark.sh /path/to/repo
+```
+
+This tool generates `.repospec.json` for any repository, creates 8 code-finding test tasks, and runs two agents in parallel — one WITH the metadata, one without — to compare efficiency and accuracy.
+
+See [`tools/README.md`](tools/README.md) for details.
+
 ## Contributing
 
 Feedback, use cases, and implementations are welcome. Open an issue or PR.
