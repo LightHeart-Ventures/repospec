@@ -20,6 +20,7 @@ import os
 import sys
 import subprocess
 import time
+import re
 from datetime import datetime
 from pathlib import Path
 import anthropic
@@ -197,7 +198,6 @@ Generate the .repospec.json now. Output ONLY valid JSON."""
         
         # Try to extract JSON
         try:
-            import re
             json_match = re.search(r'\{[\s\S]*\}', output)
             if json_match:
                 repospec = json.loads(json_match.group())
