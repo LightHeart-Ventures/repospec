@@ -336,13 +336,43 @@ def analyze_response(response, label):
     
     tasks_mentioned = sum(1 for i in range(1, 9) if f"Task {i}" in response)
     
+    # Extract usage metadata if available (Claude CLI may include it)
+    usage = {
+        "input_tokens": None,
+        "output_tokens": None,
+        "tool_calls": 0
+    }
+    
+    # Look for Claude usage stats in response or as separate JSON
+    import re
+    
+    # Check for usage footer (Claude CLI format)
+    usage_match = re.search(r'Usage: (\d+) input tokens, (\d+) output tokens', response)
+    if usage_match:
+        usage["input_tokens"] = int(usage_match.group(1))
+        usage["output_tokens"] = int(usage_match.group(2))
+    
+    # Count tool invocations (common patterns)
+    tool_patterns = [
+        r'<function_calls>',
+        r'```bash',
+        r'```shell',
+        r'>>> ',  # Python REPL
+        r'grep\s+',
+        r'find\s+',
+        r'cat\s+',
+    ]
+    for pattern in tool_patterns:
+        usage["tool_calls"] += len(re.findall(pattern, response))
+    
     return {
         "label": label,
         "response_length": len(response),
         "lines": len(lines),
         "words": len(words),
         "tasks_mentioned": tasks_mentioned,
-        "avg_words_per_task": len(words) // max(1, tasks_mentioned)
+        "avg_words_per_task": len(words) // max(1, tasks_mentioned),
+        "usage": usage
     }
 
 
@@ -440,7 +470,7 @@ def print_results(results_dir, with_spec_output, without_spec_output, repo_name,
             
             f.write("\n")
         
-        f.write("## Metrics\n\n")
+        f.write("## Response Metrics\n\n")
         f.write("| Metric | WITH .repospec.json | WITHOUT .repospec.json | Difference |\n")
         f.write("|--------|---------------------|----------------------|------------|\n")
         
@@ -449,6 +479,33 @@ def print_results(results_dir, with_spec_output, without_spec_output, repo_name,
             without_val = without_metrics[key]
             diff = with_val - without_val
             f.write(f"| {key} | {with_val} | {without_val} | {diff:+d} |\n")
+        
+        f.write("\n## Token & Tool Usage\n\n")
+        with_usage = with_metrics.get("usage", {})
+        without_usage = without_metrics.get("usage", {})
+        
+        f.write("| Metric | WITH .repospec.json | WITHOUT .repospec.json | Difference |\n")
+        f.write("|--------|---------------------|----------------------|------------|\n")
+        
+        if with_usage.get("input_tokens") and without_usage.get("input_tokens"):
+            with_input = with_usage["input_tokens"]
+            without_input = without_usage["input_tokens"]
+            diff = without_input - with_input
+            pct = (diff / without_input * 100) if without_input > 0 else 0
+            f.write(f"| Input Tokens | {with_input} | {without_input} | {diff:+d} ({pct:+.1f}%) |\n")
+        else:
+            f.write(f"| Input Tokens | (not captured) | (not captured) | — |\n")
+        
+        if with_usage.get("output_tokens") and without_usage.get("output_tokens"):
+            with_output_tokens = with_usage["output_tokens"]
+            without_output_tokens = without_usage["output_tokens"]
+            diff = without_output_tokens - with_output_tokens
+            pct = (diff / without_output_tokens * 100) if without_output_tokens > 0 else 0
+            f.write(f"| Output Tokens | {with_output_tokens} | {without_output_tokens} | {diff:+d} ({pct:+.1f}%) |\n")
+        else:
+            f.write(f"| Output Tokens | (not captured) | (not captured) | — |\n")
+        
+        f.write(f"| Tool Calls | {with_usage['tool_calls']} | {without_usage['tool_calls']} | {with_usage['tool_calls'] - without_usage['tool_calls']:+d} |\n")
         
         f.write("\n## Task Completion\n\n")
         f.write(f"- **WITH .repospec.json:** {with_metrics['tasks_mentioned']}/8 tasks mentioned\n")
@@ -490,13 +547,19 @@ def print_results(results_dir, with_spec_output, without_spec_output, repo_name,
     print(f"  WITH .repospec.json:")
     print(f"    - Words: {with_metrics['words']}")
     print(f"    - Tasks addressed: {with_metrics['tasks_mentioned']}/8")
+    print(f"    - Tool calls: {with_metrics['usage']['tool_calls']}")
     print(f"  WITHOUT .repospec.json:")
     print(f"    - Words: {without_metrics['words']}")
     print(f"    - Tasks addressed: {without_metrics['tasks_mentioned']}/8")
+    print(f"    - Tool calls: {without_metrics['usage']['tool_calls']}")
     
     if with_metrics['tasks_mentioned'] > without_metrics['tasks_mentioned']:
         delta = with_metrics['tasks_mentioned'] - without_metrics['tasks_mentioned']
         print(f"  {Colors.GREEN}✓ .repospec.json enabled {delta} more task completions{Colors.NC}")
+    
+    if with_metrics['usage']['tool_calls'] < without_metrics['usage']['tool_calls']:
+        delta = without_metrics['usage']['tool_calls'] - with_metrics['usage']['tool_calls']
+        print(f"  {Colors.GREEN}✓ .repospec.json reduced tool calls by {delta}{Colors.NC}")
     
     print("")
 
