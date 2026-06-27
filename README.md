@@ -31,6 +31,7 @@ A `.repospec.json` file at the repo root contains:
 - **`key_files`** — Important files by category
 - **`features`** — Feature flows traced through the code
 - **`testing`** — Test structure and conventions
+- **`infrastructure`** — CI/CD pipelines, infrastructure-as-code (Terraform, CloudFormation), and deploy automation
 - **`dependencies`** — Notable third-party libraries and why they matter
 
 All paths are repo-relative; all references use stable anchors (function names, not line numbers).

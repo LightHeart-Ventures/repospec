@@ -59,6 +59,7 @@ A single JSON file at the repository root.
   "key_files": { ... },
   "features": [ ... ],
   "testing": { ... },
+  "infrastructure": [ ... ],
   "dependencies": [ ... ]
 }
 ```
@@ -243,6 +244,82 @@ Not a full dependency tree (let package managers handle that), but a curated lis
   }
 ]
 ```
+
+### `infrastructure` — CI/CD, deployment, and infrastructure-as-code
+
+**Where the code runs and how it ships.** Agents asked to fix a failing pipeline, add a deploy step, or change a cloud resource otherwise have to reverse-engineer `.github/`, `infra/`, and assorted YAML/HCL from scratch. This section maps the operational surface — CI pipelines, IaC, container/orchestration manifests, and deploy automation — to its files and intent.
+
+```json
+"infrastructure": [
+  {
+    "name": "ci",
+    "kind": "ci",
+    "provider": "github-actions",
+    "path": ".github/workflows/ci.yml",
+    "purpose": "Lint, test, and build on every push and pull request",
+    "triggers": ["push", "pull_request"],
+    "tags": ["ci"]
+  },
+  {
+    "name": "release",
+    "kind": "cd",
+    "provider": "github-actions",
+    "path": ".github/workflows/release.yml",
+    "purpose": "Build and publish container image + GitHub release on tag",
+    "triggers": ["push: tags v*"],
+    "environments": ["production"],
+    "deploy": "git tag vX.Y.Z && git push --tags",
+    "tags": ["cd", "release"]
+  },
+  {
+    "name": "network",
+    "kind": "iac",
+    "provider": "terraform",
+    "path": "infra/terraform/network/",
+    "purpose": "VPC, subnets, and security groups for all environments",
+    "manages": ["aws_vpc", "aws_subnet", "aws_security_group"],
+    "environments": ["staging", "production"],
+    "deploy": "terraform -chdir=infra/terraform/network apply",
+    "tags": ["aws", "network"]
+  },
+  {
+    "name": "app-stack",
+    "kind": "iac",
+    "provider": "cloudformation",
+    "path": "infra/cloudformation/app.yaml",
+    "purpose": "ECS service, task definition, and ALB for the API",
+    "manages": ["AWS::ECS::Service", "AWS::ElasticLoadBalancingV2::LoadBalancer"],
+    "depends_on": ["network"],
+    "environments": ["staging", "production"],
+    "deploy": "aws cloudformation deploy --template-file infra/cloudformation/app.yaml",
+    "tags": ["aws", "compute"]
+  },
+  {
+    "name": "k8s",
+    "kind": "orchestration",
+    "provider": "kubernetes",
+    "path": "deploy/k8s/",
+    "purpose": "Helm chart: Deployment, Service, HPA, and Ingress for the API",
+    "deploy": "helm upgrade --install api deploy/k8s/chart",
+    "tags": ["kubernetes", "helm"]
+  }
+]
+```
+
+**Fields:**
+- `name` (string, required): Human-readable name of the component (e.g., `ci`, `release`, `network`).
+- `kind` (string, required): What this is — `ci`, `cd`, `iac`, `deploy`, `pipeline`, `container`, `orchestration`, or `other`.
+- `provider` (string, optional): Tool/platform — `github-actions`, `gitlab-ci`, `circleci`, `jenkins`, `terraform`, `cloudformation`, `pulumi`, `cdk`, `ansible`, `kubernetes`, `helm`, `docker`, etc.
+- `path` (string, required): Repo-relative path to the workflow file, module directory, or manifest.
+- `purpose` (string, required): One sentence: what does this build, deploy, or provision?
+- `triggers` (string[], optional): What sets a CI/CD pipeline running (`push`, `pull_request`, `schedule`, tag patterns, manual dispatch).
+- `manages` (string[], optional): For IaC — the resource types provisioned (e.g., `aws_vpc`, `AWS::ECS::Service`).
+- `environments` (string[], optional): Target environments (`staging`, `production`, `preview`).
+- `deploy` (string, optional): Command to run/apply it locally (e.g., `terraform apply`, `helm upgrade`).
+- `depends_on` (string[], optional): `name`s of other infrastructure components this relies on (e.g., an app stack depends on the network stack).
+- `tags` (string[], optional): Labels for grouping (`aws`, `ci`, `release`, `network`, etc.).
+
+> **Tip:** Keep `key_files.ci` for a quick "where do CI files live?" lookup and use `infrastructure` for the richer "what runs, what it provisions, and how to ship" map. The two complement each other.
 
 ## Maintenance Strategy
 
