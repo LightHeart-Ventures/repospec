@@ -1,0 +1,15 @@
+# Benchmark output (generated per-run; do not commit)
+repospec-benchmark/
+tools/repospec-benchmark/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Agent / tooling scratch
+.atum/
+
+# OS
+.DS_Store

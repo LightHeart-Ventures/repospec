@@ -423,6 +423,32 @@ def create_test_tasks():
     return tasks
 
 
+def get_discovery_prompt():
+    """Return the discovery prompt for agents unfamiliar with .repospec.json."""
+    return """You have access to a `.repospec.json` file in this repository. This is metadata that helps
+you understand repository structure efficiently.
+
+**What it is:**
+`.repospec.json` is a standard metadata file that describes:
+- Where code execution starts (entrypoints)
+- What logical modules exist and how they're related
+- Cross-cutting patterns (authentication, error handling, etc.)
+- How key features flow through the code
+- Where tests, migrations, and other important files are
+
+**How to use it:**
+1. First, read the entire `.repospec.json` file to get an overview
+2. Identify which sections are relevant to your task
+3. Use the metadata as a map to guide your exploration
+4. Verify key details with actual code files
+5. Proceed with your analysis using this structure
+
+**For more details, see:**
+https://github.com/LightHeart-Ventures/repospec/blob/main/AGENT_DISCOVERY_GUIDE.md
+
+Now proceed with your analysis tasks below."""
+
+
 def run_agent_with_repospec(repo_path, repospec, tasks, timeout=300, auth_method="api_key"):
     """Run agent WITH .repospec.json context.
     
@@ -442,7 +468,9 @@ def run_agent_with_repospec(repo_path, repospec, tasks, timeout=300, auth_method
         log_error(f"{missing} not found. Set env var or add to ~/.atum/credentials")
         return f"ERROR: {missing} not set", {"input_tokens": 0, "output_tokens": 0, "duration_seconds": 0}, 1
     
-    prompt = f"""You are an expert code navigator. You have been given a .repospec.json file that describes a repository structure.
+    discovery_prompt = get_discovery_prompt()
+    
+    prompt = f"""{discovery_prompt}
 
 Here's the .repospec.json for the repository:
 ```json

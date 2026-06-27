@@ -1,130 +1,110 @@
 # repospec Benchmark Tool
 
-Measure the impact of `.repospec.json` on agent code navigation.
+Measure the impact of `.repospec.json` on agent code navigation. Two agents answer the
+same 8 code-finding tasks against a target repo — one **with** `.repospec.json` in
+context, one **without** — and the tool reports the difference.
 
 ## Quick Start
 
 ```bash
-./repospec_benchmark.sh /path/to/repo
-```
+# OAuth (Claude.ai subscription)
+export CLAUDE_CODE_OAUTH_TOKEN=...      # or ANTHROPIC_AUTH_TOKEN
+./repospec_benchmark.sh /path/to/repo --auth-method oauth
 
-This tool:
-1. Generates `.repospec.json` for your repository using Claude
-2. Creates 8 code-finding test tasks
-3. Runs two agents: one WITH `.repospec.json`, one without
-4. Compares results (task completion, response depth, accuracy)
-
-## Prerequisites
-
-- Python 3.7+
-- `claude` CLI installed: `pip install anthropic-cli`
-- `curl` (for fetching PROMPT.md)
-- Read access to the target repository
-
-## Output
-
-Results are saved to a timestamped directory with:
-
-- **`generated.repospec.json`** — Claude-generated metadata
-- **`agent_with_repospec.log`** — Agent responses WITH .repospec.json
-- **`agent_without_repospec.log`** — Agent responses WITHOUT .repospec.json
-- **`RESULTS.md`** — Summary metrics and findings
-
-## Example
-
-```bash
-$ ./repospec_benchmark.sh /path/to/my-repo
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  repospec Benchmark Tool
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Target repository: /Users/you/projects/myapp
-Output directory: ./repospec-benchmark/myapp-20250115-143022
-Timeout per run: 300s
-
-[1/4] Generating .repospec.json for target repo...
-ℹ Fetching PROMPT.md from repospec repository...
-ℹ Extracting repository context...
-ℹ Invoking Claude to generate .repospec.json...
-✓ Generated .repospec.json
-
-[2/4] Creating code-finding test tasks...
-✓ Created 8 test tasks
-
-[3/4] Running agents in parallel...
-ℹ Running agent WITH .repospec.json context...
-ℹ Running agent WITHOUT .repospec.json context...
-✓ Both agents completed
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Benchmark Complete!
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Results saved to: ./repospec-benchmark/myapp-20250115-143022
-
-Summary:
-  WITH .repospec.json:
-    - Words: 2847
-    - Tasks addressed: 8/8
-  WITHOUT .repospec.json:
-    - Words: 1923
-    - Tasks addressed: 6/8
-  ✓ .repospec.json enabled 2 more task completions
-```
-
-## Options
-
-```bash
---output-dir DIR           Output directory for results (default: ./repospec-benchmark)
---timeout SECS             Timeout per agent run (default: 300)
---auth-method METHOD       Authentication method:
-                           - api_key: Use ANTHROPIC_API_KEY environment variable
-                           - oauth: Use claude.ai subscription (ANTHROPIC_AUTH_TOKEN)
-                           - both: Run benchmarks with both auth methods
-                           (default: api_key)
---help                    Show help message
-```
-
-## Authentication
-
-### API Key (`--auth-method api_key`)
-Uses `ANTHROPIC_API_KEY` environment variable. Set it before running:
-```bash
+# or API key
 export ANTHROPIC_API_KEY=sk-ant-...
 ./repospec_benchmark.sh /path/to/repo
 ```
 
-### OAuth (`--auth-method oauth`)
-Uses Claude.ai subscription token (`ANTHROPIC_AUTH_TOKEN`). Set it before running:
-```bash
-export ANTHROPIC_AUTH_TOKEN=...
-./repospec_benchmark.sh /path/to/repo --auth-method oauth
+The wrapper just execs `python3 repospec_benchmark.py "$@"`; you can call the Python
+script directly too.
+
+## What it does
+
+1. Generates a `.repospec.json` for the target repo (using `PROMPT.md`).
+2. Creates 8 code-finding test tasks (entry points, modules, auth pattern, feature flow, …).
+3. Runs two agents in parallel — WITH and WITHOUT the metadata in context.
+4. Writes a timestamped results directory and a `RESULTS.md` summary.
+
+## Output
+
+Each run produces a directory under `--output-dir` (default `./repospec-benchmark`):
+
+| File | Contents |
+|------|----------|
+| `RESULTS.md` | Summary metrics (see below) |
+| `generated.repospec.json` | The metadata the tool generated for the repo |
+| `agent_with_repospec.log` | Full response WITH `.repospec.json` |
+| `agent_without_repospec.log` | Full response WITHOUT `.repospec.json` |
+
+## Metrics
+
+| Metric | Meaning |
+|--------|---------|
+| **Path accuracy** | Of the file paths the agent cites, how many actually exist (valid / total). The headline signal. |
+| Valid / invalid path references | Counts of real vs hallucinated paths cited. |
+| Response length / words / lines | Depth of the answer. |
+| Input / output tokens | Token cost (loading the spec adds input tokens). |
+| Total / per-task duration | Wall-clock time per run and divided across the 8 tasks. |
+| Tasks mentioned | How many of the 8 tasks the response addresses. |
+
+> **Scope:** this is a *pure-navigation* benchmark — the agent reasons over the repo
+> context it's given; it does not execute live tools. Path accuracy is therefore the
+> most reliable signal. Planned upgrades (ground-truth task correctness, real tool-call
+> logging, per-task breakdown, hallucination + cost metrics) are tracked in
+> [BENCHMARK_ROADMAP.md](BENCHMARK_ROADMAP.md).
+
+## Latest results (Ghost, 7,181 files)
+
+4 OAuth runs against the [Ghost](https://github.com/TryGhost/Ghost) CMS repo:
+
+| Run | Path accuracy WITH | Path accuracy WITHOUT | Valid paths WITH / WITHOUT |
+|-----|-------------------:|----------------------:|---------------------------:|
+| 1 | 34.2% | 0.0% | 25 / 0 |
+| 2 | 17.4% | 1.5% | 8 / 1 |
+| 3 | 20.0% | 1.5% | 7 / 1 |
+| 4 | 22.6% | 2.4% | 7 / 1 |
+| **avg** | **~23.6%** | **~1.4%** | **~12 / ~1** |
+
+Agents WITH `.repospec.json` cited valid file paths ~16× more often and hallucinated
+fewer paths every run. Both sides addressed all 8 tasks. Cost of the map: +2.4k–3k input
+tokens per run.
+
+## Options
+
+```
+--output-dir DIR       Output directory for results (default: ./repospec-benchmark)
+--timeout SECS         Timeout per agent run (default: 300)
+--auth-method METHOD   api_key | oauth | both (default: api_key)
+--help                 Show help
 ```
 
-### Both (`--auth-method both`)
-Runs the full benchmark twice — once with each auth method — for direct comparison:
-```bash
-./repospec_benchmark.sh /path/to/repo --auth-method both
-```
-Generates separate results files: `RESULTS-api_key.md` and `RESULTS-oauth.md`
+`--auth-method both` runs the full benchmark once per auth method and writes separate
+`RESULTS-api_key.md` / `RESULTS-oauth.md` files.
 
-## How to Interpret Results
+## Authentication
 
-Review the logs manually:
-- **WITH .repospec.json:** Should reference the metadata and give organized, focused answers
-- **WITHOUT .repospec.json:** More exploratory; may miss key files or take longer to find answers
-- **Task coverage:** How many of 8 tasks did each agent complete?
-- **Accuracy:** Are file paths and function names correct?
+| Method | Env var | Notes |
+|--------|---------|-------|
+| `api_key` | `ANTHROPIC_API_KEY` | Standard Anthropic API key (`sk-ant-…`). |
+| `oauth` | `CLAUDE_CODE_OAUTH_TOKEN` (or `ANTHROPIC_AUTH_TOKEN`) | Claude.ai subscription token. |
+| `both` | both of the above | Runs each in turn for direct comparison. |
 
-## Next Steps
+## How agents discover `.repospec.json`
 
-If `.repospec.json` helps:
-- Commit it to your repo
-- Share with teammates and agents
-- Use as a template in CI/CD
+Both benchmark agents are instructed to look for `.repospec.json` at the repo root,
+validate it (`"schema": "repospec/v1"`), use it as a map, and verify details against the
+real code — mirroring how a real agent would discover it in the wild. See
+[../AGENT_DISCOVERY_GUIDE.md](../AGENT_DISCOVERY_GUIDE.md) for the full guidance.
 
-If results are unclear:
-- Review the logs for quality differences
-- Try with a different, more complex repository
-- Adjust the PROMPT.md template
+## Interpreting a run
+
+- **WITH** should reference the metadata and give organized, focused, path-accurate answers.
+- **WITHOUT** is more exploratory and cites more paths that don't exist.
+- If results are unclear, try a larger/more complex repo or tighten the generated spec.
+
+## Prerequisites
+
+- Python 3.8+
+- An Anthropic credential (API key or OAuth token, above)
+- Read access to the target repository

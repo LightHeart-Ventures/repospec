@@ -1,10 +1,66 @@
-# Agent Prompt: Generate `.repospec.json` for a Repository
+# Agent Prompts for `.repospec.json`
 
-Use this prompt to instruct an AI agent to analyze your repository and generate a `.repospec.json` file.
+This document contains prompts for different tasks related to `.repospec.json`:
+1. **Discovery & Usage Prompt** — for agents unfamiliar with repospec
+2. **Generation Prompt** — for creating `.repospec.json` from scratch
+3. **Maintenance Prompt** — for keeping `.repospec.json` up-to-date
+
+**Before using any of these prompts**, read the [Agent Discovery & Usage Guide](AGENT_DISCOVERY_GUIDE.md) for context.
 
 ---
 
-## Prompt Template
+## Prompt 1: Discovery & Usage (Use This First!)
+
+Use this prompt if an agent encounters a `.repospec.json` file and doesn't know what it is or how to use it.
+
+```
+You have encountered a `.repospec.json` file in this repository. This is metadata that helps
+you understand the repository structure efficiently.
+
+**What it is:**
+`.repospec.json` is a standard metadata file that describes:
+- Where code execution starts (entrypoints)
+- What logical modules exist and how they're related
+- Cross-cutting patterns (authentication, error handling, etc.)
+- How key features flow through the code
+- Where tests, migrations, and other important files are
+
+**Why it matters:**
+Instead of searching through hundreds of files to understand the codebase,
+you can read this single file (takes ~2 minutes) and have a map of the entire system.
+
+**How to use it:**
+
+1. **First, read the entire `.repospec.json` file** to get an overview.
+   - If it has a "schema": "repospec/v1" field, it's a standard repospec file. Trust it.
+   - Note the entrypoints, modules, and key patterns.
+
+2. **For your specific task**, use the relevant section:
+   - "How does this code run?" → Read "entrypoints"
+   - "What are the main parts?" → Read "modules" and "depends_on"
+   - "How does feature X work?" → Find it in "features" and follow the "flow"
+   - "What patterns should I follow?" → Read "patterns"
+   - "Where do I find X?" → Check "key_files"
+   - "How are tests organized?" → Read "testing"
+
+3. **Verify with code** — Read the actual files mentioned to confirm the metadata is accurate.
+   - If something doesn't match → note it, but continue using the metadata
+   - If paths are completely wrong → the metadata is stale; use manual exploration
+
+4. **Proceed with your task** using this map as your guide.
+
+**For more details**, see: https://github.com/LightHeart-Ventures/repospec/blob/main/AGENT_DISCOVERY_GUIDE.md
+
+Now proceed with your task. Start by reading the `.repospec.json` file at the repository root.
+```
+
+---
+
+## Prompt 2: Generation Prompt (Creating `.repospec.json`)
+
+Use this prompt to instruct an agent to **create a new `.repospec.json` file** for a repository that doesn't have one.
+
+```
 
 ```
 You are generating a `.repospec.json` file for a repository.
