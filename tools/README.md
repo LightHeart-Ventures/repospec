@@ -76,10 +76,38 @@ Summary:
 ## Options
 
 ```bash
---output-dir DIR     Output directory for results (default: ./repospec-benchmark)
---timeout SECS       Timeout per agent run (default: 300)
---help              Show help message
+--output-dir DIR           Output directory for results (default: ./repospec-benchmark)
+--timeout SECS             Timeout per agent run (default: 300)
+--auth-method METHOD       Authentication method:
+                           - api_key: Use ANTHROPIC_API_KEY environment variable
+                           - oauth: Use claude.ai subscription (ANTHROPIC_AUTH_TOKEN)
+                           - both: Run benchmarks with both auth methods
+                           (default: api_key)
+--help                    Show help message
 ```
+
+## Authentication
+
+### API Key (`--auth-method api_key`)
+Uses `ANTHROPIC_API_KEY` environment variable. Set it before running:
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+./repospec_benchmark.sh /path/to/repo
+```
+
+### OAuth (`--auth-method oauth`)
+Uses Claude.ai subscription token (`ANTHROPIC_AUTH_TOKEN`). Set it before running:
+```bash
+export ANTHROPIC_AUTH_TOKEN=...
+./repospec_benchmark.sh /path/to/repo --auth-method oauth
+```
+
+### Both (`--auth-method both`)
+Runs the full benchmark twice — once with each auth method — for direct comparison:
+```bash
+./repospec_benchmark.sh /path/to/repo --auth-method both
+```
+Generates separate results files: `RESULTS-api_key.md` and `RESULTS-oauth.md`
 
 ## How to Interpret Results
 

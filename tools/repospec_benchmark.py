@@ -261,11 +261,21 @@ def create_test_tasks():
     return tasks
 
 
-def run_agent_with_repospec(repo_path, repospec, tasks, timeout=300):
-    """Run agent WITH .repospec.json context."""
-    log_info("Running agent WITH .repospec.json context...")
+def run_agent_with_repospec(repo_path, repospec, tasks, timeout=300, auth_method="api_key"):
+    """Run agent WITH .repospec.json context.
     
-    client = anthropic.Anthropic()
+    Args:
+        auth_method: "api_key" (ANTHROPIC_API_KEY env var) or "oauth" (Claude.ai subscription)
+    """
+    log_info(f"Running agent WITH .repospec.json context ({auth_method} auth)...")
+    
+    # Initialize client with appropriate auth method
+    if auth_method == "oauth":
+        # OAuth uses claude.ai subscription - no explicit credentials needed
+        client = anthropic.Anthropic(api_key=None)  # Uses ANTHROPIC_AUTH_TOKEN or browser session
+    else:
+        # API key authentication
+        client = anthropic.Anthropic()
     
     prompt = f"""You are an expert code navigator. You have been given a .repospec.json file that describes a repository structure.
 
@@ -302,11 +312,21 @@ For each task, work systematically using .repospec.json as your starting point. 
         return f"ERROR: {e}", {"input_tokens": 0, "output_tokens": 0}, 1
 
 
-def run_agent_without_repospec(repo_path, tasks, timeout=300):
-    """Run agent WITHOUT .repospec.json context."""
-    log_info("Running agent WITHOUT .repospec.json context...")
+def run_agent_without_repospec(repo_path, tasks, timeout=300, auth_method="api_key"):
+    """Run agent WITHOUT .repospec.json context.
     
-    client = anthropic.Anthropic()
+    Args:
+        auth_method: "api_key" (ANTHROPIC_API_KEY env var) or "oauth" (Claude.ai subscription)
+    """
+    log_info(f"Running agent WITHOUT .repospec.json context ({auth_method} auth)...")
+    
+    # Initialize client with appropriate auth method
+    if auth_method == "oauth":
+        # OAuth uses claude.ai subscription - no explicit credentials needed
+        client = anthropic.Anthropic(api_key=None)  # Uses ANTHROPIC_AUTH_TOKEN or browser session
+    else:
+        # API key authentication
+        client = anthropic.Anthropic()
     
     prompt = f"""You are an expert code navigator. You have been asked to understand a repository by exploring the files directly.
 
@@ -478,9 +498,14 @@ def quantify_repo(repo_path):
     return stats
 
 
-def print_results(results_dir, with_spec_output, without_spec_output, repo_name, repo_path=None, with_usage=None, without_usage=None):
-    """Print and save benchmark results."""
-    log_step(4, 4, "Analyzing results...")
+def print_results(results_file, with_spec_output, without_spec_output, repo_name, repo_path=None, with_usage=None, without_usage=None, auth_method="api_key"):
+    """Print and save benchmark results.
+    
+    Args:
+        results_file: Path to write RESULTS.md to
+        auth_method: Authentication method used ("api_key" or "oauth")
+    """
+    log_step(4, 4, f"Analyzing results ({auth_method} auth)...")
     
     with_metrics = analyze_response(with_spec_output, "WITH .repospec.json", repo_path, with_usage)
     without_metrics = analyze_response(without_spec_output, "WITHOUT .repospec.json", repo_path, without_usage)
@@ -489,12 +514,11 @@ def print_results(results_dir, with_spec_output, without_spec_output, repo_name,
     if repo_path:
         repo_stats = quantify_repo(repo_path)
     
-    results_file = results_dir / "RESULTS.md"
-    
     with open(results_file, 'w') as f:
         f.write("# .repospec.json Benchmark Results\n\n")
         f.write(f"**Repository:** {repo_name}\n")
-        f.write(f"**Date:** {datetime.now().isoformat()}\n\n")
+        f.write(f"**Date:** {datetime.now().isoformat()}\n")
+        f.write(f"**Auth Method:** {auth_method}\n\n")
         
         if repo_stats:
             f.write("## Repository Statistics\n\n")
@@ -593,10 +617,10 @@ def print_results(results_dir, with_spec_output, without_spec_output, repo_name,
     
     print("")
     print(f"{Colors.BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{Colors.NC}")
-    print(f"{Colors.GREEN}Benchmark Complete!{Colors.NC}")
+    print(f"{Colors.GREEN}Benchmark Complete! ({auth_method} auth){Colors.NC}")
     print(f"{Colors.BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{Colors.NC}")
     print("")
-    print(f"{Colors.YELLOW}Results saved to:{Colors.NC} {results_dir}")
+    print(f"{Colors.YELLOW}Results saved to:{Colors.NC} {results_file}")
     print("")
     
     if repo_stats:
@@ -672,6 +696,12 @@ def main():
         default=300,
         help="Timeout per agent run in seconds (default: 300)"
     )
+    parser.add_argument(
+        "--auth-method",
+        choices=["api_key", "oauth", "both"],
+        default="api_key",
+        help="Authentication method: 'api_key' (ANTHROPIC_API_KEY), 'oauth' (claude.ai subscription), or 'both' to run benchmarks with both (default: api_key)"
+    )
     
     args = parser.parse_args()
     
@@ -698,18 +728,36 @@ def main():
     
     tasks = create_test_tasks()
     
-    log_step(3, 4, "Running agents in parallel...")
-    print("")
+    # Determine which auth methods to test
+    auth_methods = []
+    if args.auth_method == "both":
+        auth_methods = ["api_key", "oauth"]
+    else:
+        auth_methods = [args.auth_method]
     
-    with_output, with_usage, with_code = run_agent_with_repospec(repo_path, repospec, tasks, args.timeout)
-    without_output, without_usage, without_code = run_agent_without_repospec(repo_path, tasks, args.timeout)
-    
-    (results_dir / "agent_with_repospec.log").write_text(with_output)
-    (results_dir / "agent_without_repospec.log").write_text(without_output)
-    
-    log_success("Both agents completed")
-    
-    print_results(results_dir, with_output, without_output, repo_path.name, repo_path, with_usage, without_usage)
+    # Run benchmarks for each auth method
+    for auth_method in auth_methods:
+        log_step(3, 4, f"Running agents with {auth_method} auth...")
+        print("")
+        
+        try:
+            with_output, with_usage, with_code = run_agent_with_repospec(repo_path, repospec, tasks, args.timeout, auth_method)
+            without_output, without_usage, without_code = run_agent_without_repospec(repo_path, tasks, args.timeout, auth_method)
+            
+            # Save logs with auth method in filename
+            auth_suffix = f"-{auth_method}" if args.auth_method == "both" else ""
+            (results_dir / f"agent_with_repospec{auth_suffix}.log").write_text(with_output)
+            (results_dir / f"agent_without_repospec{auth_suffix}.log").write_text(without_output)
+            
+            log_success(f"Both agents completed ({auth_method} auth)")
+            
+            # Generate results
+            results_file = f"RESULTS{auth_suffix}.md" if args.auth_method == "both" else "RESULTS.md"
+            print_results(results_dir / results_file, with_output, without_output, repo_path.name, repo_path, with_usage, without_usage, auth_method)
+        
+        except Exception as e:
+            log_error(f"Error running benchmark with {auth_method} auth: {e}")
+            continue
 
 
 if __name__ == "__main__":
