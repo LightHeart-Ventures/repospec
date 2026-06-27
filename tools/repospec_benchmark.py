@@ -147,16 +147,99 @@ def extract_repo_context(repo_path, max_files=100):
     return context
 
 
+def load_credentials():
+    """Load API credentials from environment or ~/.atum/credentials file.
+    
+    Returns:
+        dict with 'oauth_token' (CLAUDE_CODE_OAUTH_TOKEN) and 'api_key' (ANTHROPIC_API_KEY)
+    """
+    creds = {
+        "oauth_token": None,
+        "api_key": None,
+    }
+    
+    # Try environment variables first
+    creds["oauth_token"] = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
+    creds["api_key"] = os.environ.get("ANTHROPIC_API_KEY")
+    
+    # If not in env, try ~/.atum/credentials file
+    creds_file = Path.home() / ".atum" / "credentials"
+    if creds_file.exists():
+        try:
+            import configparser
+            config = configparser.ConfigParser()
+            config.read(creds_file)
+            
+            # Try to extract tokens from [default] or other sections
+            for section in config.sections():
+                if not creds["oauth_token"] and config.has_option(section, "claude_code_oauth_token"):
+                    creds["oauth_token"] = config.get(section, "claude_code_oauth_token")
+                if not creds["api_key"] and config.has_option(section, "anthropic_api_key"):
+                    creds["api_key"] = config.get(section, "anthropic_api_key")
+        except Exception as e:
+            log_warning(f"Error reading credentials file: {e}")
+    
+    return creds
+
+
+# Auth/model configuration.
+# OAuth (CLAUDE_CODE_OAUTH_TOKEN) is a Claude subscription token: it must be sent
+# as a Bearer auth_token (NOT x-api-key), needs the oauth beta header, requires the
+# Claude Code identity system prompt, and only exposes subscription model ids.
+CLAUDE_CODE_SYSTEM = "You are Claude Code, Anthropic's official CLI for Claude."
+OAUTH_BETA_HEADER = "oauth-2025-04-20"
+OAUTH_MODEL = "claude-sonnet-4-5-20250929"
+API_MODEL = "claude-3-5-sonnet-20241022"
+
+
+def make_client(auth_method, creds):
+    """Build an Anthropic client for the given auth method.
+
+    Returns (client, model, system) where `system` is the required system-prompt
+    prefix (or None). Returns (None, None, None) if the required credential is missing.
+    """
+    if auth_method == "oauth":
+        tok = creds.get("oauth_token")
+        if not tok:
+            return None, None, None
+        client = anthropic.Anthropic(
+            auth_token=tok,
+            default_headers={"anthropic-beta": OAUTH_BETA_HEADER},
+        )
+        return client, OAUTH_MODEL, CLAUDE_CODE_SYSTEM
+    else:
+        key = creds.get("api_key")
+        if not key:
+            return None, None, None
+        return anthropic.Anthropic(api_key=key), API_MODEL, None
+
+
+def _create_message(client, model, system, prompt, max_tokens=4096):
+    """Single-user-message helper that includes the system prompt only when set."""
+    kwargs = {
+        "model": model,
+        "max_tokens": max_tokens,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    if system:
+        kwargs["system"] = system
+    return client.messages.create(**kwargs)
+
+
+
 def generate_repospec_json(repo_path, output_dir):
     """Generate .repospec.json using Claude API."""
     log_step(1, 4, "Generating .repospec.json for target repo...")
     
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        log_error("ANTHROPIC_API_KEY environment variable not set")
+    creds = load_credentials()
+    
+    # Prefer OAuth (subscription) over API key.
+    auth_method = "oauth" if creds.get("oauth_token") else "api_key"
+    client, model, system = make_client(auth_method, creds)
+    if client is None:
+        log_error("No API credentials found. Set CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY, or add to ~/.atum/credentials")
         return get_minimal_repospec({"name": repo_path.name, "path": str(repo_path), "files": [], "readmes": [], "manifests": []}), None
     
-    client = anthropic.Anthropic(api_key=api_key)
     prompt_md = fetch_prompt_md()
     context = extract_repo_context(repo_path)
     
@@ -191,13 +274,7 @@ Generate the .repospec.json now. Output ONLY valid JSON."""
     log_info("Invoking Claude API to generate .repospec.json...")
     
     try:
-        response = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
-            max_tokens=4096,
-            messages=[
-                {"role": "user", "content": generation_prompt}
-            ]
-        )
+        response = _create_message(client, model, system, generation_prompt)
         
         output = response.content[0].text.strip()
         
@@ -270,21 +347,17 @@ def run_agent_with_repospec(repo_path, repospec, tasks, timeout=300, auth_method
     """Run agent WITH .repospec.json context.
     
     Args:
-        auth_method: "api_key" (ANTHROPIC_API_KEY env var) or "oauth" (Claude.ai subscription)
+        auth_method: "api_key" (ANTHROPIC_API_KEY) or "oauth" (CLAUDE_CODE_OAUTH_TOKEN)
     """
     log_info(f"Running agent WITH .repospec.json context ({auth_method} auth)...")
     
-    # Initialize client with appropriate auth method
-    if auth_method == "oauth":
-        # OAuth uses claude.ai subscription - no explicit credentials needed
-        client = anthropic.Anthropic(api_key=None)  # Uses ANTHROPIC_AUTH_TOKEN or browser session
-    else:
-        # API key authentication
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
-        if not api_key:
-            log_error("ANTHROPIC_API_KEY environment variable not set")
-            return f"ERROR: ANTHROPIC_API_KEY not set", {"input_tokens": 0, "output_tokens": 0}, 1
-        client = anthropic.Anthropic(api_key=api_key)
+    creds = load_credentials()
+    
+    client, model, system = make_client(auth_method, creds)
+    if client is None:
+        missing = "CLAUDE_CODE_OAUTH_TOKEN" if auth_method == "oauth" else "ANTHROPIC_API_KEY"
+        log_error(f"{missing} not found. Set env var or add to ~/.atum/credentials")
+        return f"ERROR: {missing} not set", {"input_tokens": 0, "output_tokens": 0}, 1
     
     prompt = f"""You are an expert code navigator. You have been given a .repospec.json file that describes a repository structure.
 
@@ -300,13 +373,7 @@ Now, use this as your guide to answer the following tasks. Reference .repospec.j
 For each task, work systematically using .repospec.json as your starting point. Be specific and reference files/functions by name."""
 
     try:
-        response = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
-            max_tokens=4096,
-            messages=[
-                {"role": "user", "content": prompt}
-            ]
-        )
+        response = _create_message(client, model, system, prompt)
         
         # Extract response text and usage
         response_text = response.content[0].text
@@ -325,21 +392,17 @@ def run_agent_without_repospec(repo_path, tasks, timeout=300, auth_method="api_k
     """Run agent WITHOUT .repospec.json context.
     
     Args:
-        auth_method: "api_key" (ANTHROPIC_API_KEY env var) or "oauth" (Claude.ai subscription)
+        auth_method: "api_key" (ANTHROPIC_API_KEY) or "oauth" (CLAUDE_CODE_OAUTH_TOKEN)
     """
     log_info(f"Running agent WITHOUT .repospec.json context ({auth_method} auth)...")
     
-    # Initialize client with appropriate auth method
-    if auth_method == "oauth":
-        # OAuth uses claude.ai subscription - no explicit credentials needed
-        client = anthropic.Anthropic(api_key=None)  # Uses ANTHROPIC_AUTH_TOKEN or browser session
-    else:
-        # API key authentication
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
-        if not api_key:
-            log_error("ANTHROPIC_API_KEY environment variable not set")
-            return f"ERROR: ANTHROPIC_API_KEY not set", {"input_tokens": 0, "output_tokens": 0}, 1
-        client = anthropic.Anthropic(api_key=api_key)
+    creds = load_credentials()
+    
+    client, model, system = make_client(auth_method, creds)
+    if client is None:
+        missing = "CLAUDE_CODE_OAUTH_TOKEN" if auth_method == "oauth" else "ANTHROPIC_API_KEY"
+        log_error(f"{missing} not found. Set env var or add to ~/.atum/credentials")
+        return f"ERROR: {missing} not set", {"input_tokens": 0, "output_tokens": 0}, 1
     
     prompt = f"""You are an expert code navigator. You have been asked to understand a repository by exploring the files directly.
 
@@ -352,13 +415,7 @@ Answer the following tasks by examining the code:
 Work systematically without any pre-generated metadata. Be specific and reference files/functions by name."""
 
     try:
-        response = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
-            max_tokens=4096,
-            messages=[
-                {"role": "user", "content": prompt}
-            ]
-        )
+        response = _create_message(client, model, system, prompt)
         
         # Extract response text and usage
         response_text = response.content[0].text
@@ -712,8 +769,8 @@ def main():
     parser.add_argument(
         "--auth-method",
         choices=["api_key", "oauth", "both"],
-        default="api_key",
-        help="Authentication method: 'api_key' (ANTHROPIC_API_KEY), 'oauth' (claude.ai subscription), or 'both' to run benchmarks with both (default: api_key)"
+        default="oauth",
+        help="Authentication method: 'oauth' (CLAUDE_CODE_OAUTH_TOKEN, claude.ai subscription), 'api_key' (ANTHROPIC_API_KEY), or 'both' (default: oauth)"
     )
     
     args = parser.parse_args()
