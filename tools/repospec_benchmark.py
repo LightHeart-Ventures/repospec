@@ -22,6 +22,7 @@ import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
+import anthropic
 
 
 class Colors:
@@ -146,9 +147,10 @@ def extract_repo_context(repo_path, max_files=100):
 
 
 def generate_repospec_json(repo_path, output_dir):
-    """Generate .repospec.json using Claude."""
+    """Generate .repospec.json using Claude API."""
     log_step(1, 4, "Generating .repospec.json for target repo...")
     
+    client = anthropic.Anthropic()
     prompt_md = fetch_prompt_md()
     context = extract_repo_context(repo_path)
     
@@ -180,22 +182,18 @@ Manifests found:
 
 Generate the .repospec.json now. Output ONLY valid JSON."""
 
-    log_info("Invoking Claude to generate .repospec.json...")
+    log_info("Invoking Claude API to generate .repospec.json...")
     
     try:
-        result = subprocess.run(
-            ["claude"],
-            input=generation_prompt,
-            capture_output=True,
-            text=True,
-            timeout=90
+        response = client.messages.create(
+            model="claude-3-5-sonnet-20241022",
+            max_tokens=4096,
+            messages=[
+                {"role": "user", "content": generation_prompt}
+            ]
         )
         
-        if result.returncode != 0:
-            log_warning(f"Claude returned error")
-            return get_minimal_repospec(context), None
-        
-        output = result.stdout.strip()
+        output = response.content[0].text.strip()
         
         # Try to extract JSON
         try:
@@ -218,12 +216,9 @@ Generate the .repospec.json now. Output ONLY valid JSON."""
             log_warning("Could not parse Claude output as JSON")
             return get_minimal_repospec(context), None
     
-    except subprocess.TimeoutExpired:
-        log_error("Claude request timed out")
+    except Exception as e:
+        log_error(f"Error calling Claude API: {e}")
         return get_minimal_repospec(context), None
-    except FileNotFoundError:
-        log_error("Claude CLI not found. Install with: pip install anthropic-cli")
-        sys.exit(1)
 
 
 def get_minimal_repospec(context):
@@ -270,6 +265,8 @@ def run_agent_with_repospec(repo_path, repospec, tasks, timeout=300):
     """Run agent WITH .repospec.json context."""
     log_info("Running agent WITH .repospec.json context...")
     
+    client = anthropic.Anthropic()
+    
     prompt = f"""You are an expert code navigator. You have been given a .repospec.json file that describes a repository structure.
 
 Here's the .repospec.json for the repository:
@@ -284,24 +281,32 @@ Now, use this as your guide to answer the following tasks. Reference .repospec.j
 For each task, work systematically using .repospec.json as your starting point. Be specific and reference files/functions by name."""
 
     try:
-        result = subprocess.run(
-            ["claude"],
-            input=prompt,
-            capture_output=True,
-            text=True,
-            timeout=timeout
+        response = client.messages.create(
+            model="claude-3-5-sonnet-20241022",
+            max_tokens=4096,
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
         )
-        return result.stdout, result.returncode
-    except subprocess.TimeoutExpired:
-        return "TIMEOUT", 124
-    except FileNotFoundError:
-        log_error("Claude CLI not found")
-        sys.exit(1)
+        
+        # Extract response text and usage
+        response_text = response.content[0].text
+        usage = {
+            "input_tokens": response.usage.input_tokens,
+            "output_tokens": response.usage.output_tokens,
+        }
+        
+        return response_text, usage, 0
+    except Exception as e:
+        log_error(f"Error calling Claude API: {e}")
+        return f"ERROR: {e}", {"input_tokens": 0, "output_tokens": 0}, 1
 
 
 def run_agent_without_repospec(repo_path, tasks, timeout=300):
     """Run agent WITHOUT .repospec.json context."""
     log_info("Running agent WITHOUT .repospec.json context...")
+    
+    client = anthropic.Anthropic()
     
     prompt = f"""You are an expert code navigator. You have been asked to understand a repository by exploring the files directly.
 
@@ -314,43 +319,47 @@ Answer the following tasks by examining the code:
 Work systematically without any pre-generated metadata. Be specific and reference files/functions by name."""
 
     try:
-        result = subprocess.run(
-            ["claude"],
-            input=prompt,
-            capture_output=True,
-            text=True,
-            timeout=timeout
+        response = client.messages.create(
+            model="claude-3-5-sonnet-20241022",
+            max_tokens=4096,
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
         )
-        return result.stdout, result.returncode
-    except subprocess.TimeoutExpired:
-        return "TIMEOUT", 124
-    except FileNotFoundError:
-        log_error("Claude CLI not found")
-        sys.exit(1)
+        
+        # Extract response text and usage
+        response_text = response.content[0].text
+        usage = {
+            "input_tokens": response.usage.input_tokens,
+            "output_tokens": response.usage.output_tokens,
+        }
+        
+        return response_text, usage, 0
+    except Exception as e:
+        log_error(f"Error calling Claude API: {e}")
+        return f"ERROR: {e}", {"input_tokens": 0, "output_tokens": 0}, 1
 
 
-def analyze_response(response, label, repo_path=None):
-    """Analyze agent response metrics."""
+def analyze_response(response, label, repo_path=None, usage_dict=None):
+    """Analyze agent response metrics.
+    
+    Args:
+        response: The text response from the agent
+        label: Label for this response (WITH/WITHOUT .repospec.json)
+        repo_path: Path to repo for path validation
+        usage_dict: Dict with 'input_tokens' and 'output_tokens' from API
+    """
     lines = response.split('\n')
     words = response.split()
     
     tasks_mentioned = sum(1 for i in range(1, 9) if f"Task {i}" in response)
     
-    # Extract usage metadata if available (Claude CLI may include it)
+    # Use provided usage dict from API, or initialize empty
     usage = {
-        "input_tokens": None,
-        "output_tokens": None,
+        "input_tokens": usage_dict.get("input_tokens") if usage_dict else None,
+        "output_tokens": usage_dict.get("output_tokens") if usage_dict else None,
         "tool_calls": 0
     }
-    
-    # Look for Claude usage stats in response or as separate JSON
-    import re
-    
-    # Check for usage footer (Claude CLI format)
-    usage_match = re.search(r'Usage: (\d+) input tokens, (\d+) output tokens', response)
-    if usage_match:
-        usage["input_tokens"] = int(usage_match.group(1))
-        usage["output_tokens"] = int(usage_match.group(2))
     
     # Count tool invocations (common patterns)
     tool_patterns = [
@@ -469,12 +478,12 @@ def quantify_repo(repo_path):
     return stats
 
 
-def print_results(results_dir, with_spec_output, without_spec_output, repo_name, repo_path=None):
+def print_results(results_dir, with_spec_output, without_spec_output, repo_name, repo_path=None, with_usage=None, without_usage=None):
     """Print and save benchmark results."""
     log_step(4, 4, "Analyzing results...")
     
-    with_metrics = analyze_response(with_spec_output, "WITH .repospec.json", repo_path)
-    without_metrics = analyze_response(without_spec_output, "WITHOUT .repospec.json", repo_path)
+    with_metrics = analyze_response(with_spec_output, "WITH .repospec.json", repo_path, with_usage)
+    without_metrics = analyze_response(without_spec_output, "WITHOUT .repospec.json", repo_path, without_usage)
     
     repo_stats = None
     if repo_path:
@@ -692,15 +701,15 @@ def main():
     log_step(3, 4, "Running agents in parallel...")
     print("")
     
-    with_output, _ = run_agent_with_repospec(repo_path, repospec, tasks, args.timeout)
-    without_output, _ = run_agent_without_repospec(repo_path, tasks, args.timeout)
+    with_output, with_usage, with_code = run_agent_with_repospec(repo_path, repospec, tasks, args.timeout)
+    without_output, without_usage, without_code = run_agent_without_repospec(repo_path, tasks, args.timeout)
     
     (results_dir / "agent_with_repospec.log").write_text(with_output)
     (results_dir / "agent_without_repospec.log").write_text(without_output)
     
     log_success("Both agents completed")
     
-    print_results(results_dir, with_output, without_output, repo_path.name, repo_path)
+    print_results(results_dir, with_output, without_output, repo_path.name, repo_path, with_usage, without_usage)
 
 
 if __name__ == "__main__":
