@@ -151,7 +151,12 @@ def generate_repospec_json(repo_path, output_dir):
     """Generate .repospec.json using Claude API."""
     log_step(1, 4, "Generating .repospec.json for target repo...")
     
-    client = anthropic.Anthropic()
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        log_error("ANTHROPIC_API_KEY environment variable not set")
+        return get_minimal_repospec({"name": repo_path.name, "path": str(repo_path), "files": [], "readmes": [], "manifests": []}), None
+    
+    client = anthropic.Anthropic(api_key=api_key)
     prompt_md = fetch_prompt_md()
     context = extract_repo_context(repo_path)
     
@@ -275,7 +280,11 @@ def run_agent_with_repospec(repo_path, repospec, tasks, timeout=300, auth_method
         client = anthropic.Anthropic(api_key=None)  # Uses ANTHROPIC_AUTH_TOKEN or browser session
     else:
         # API key authentication
-        client = anthropic.Anthropic()
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            log_error("ANTHROPIC_API_KEY environment variable not set")
+            return f"ERROR: ANTHROPIC_API_KEY not set", {"input_tokens": 0, "output_tokens": 0}, 1
+        client = anthropic.Anthropic(api_key=api_key)
     
     prompt = f"""You are an expert code navigator. You have been given a .repospec.json file that describes a repository structure.
 
@@ -326,7 +335,11 @@ def run_agent_without_repospec(repo_path, tasks, timeout=300, auth_method="api_k
         client = anthropic.Anthropic(api_key=None)  # Uses ANTHROPIC_AUTH_TOKEN or browser session
     else:
         # API key authentication
-        client = anthropic.Anthropic()
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            log_error("ANTHROPIC_API_KEY environment variable not set")
+            return f"ERROR: ANTHROPIC_API_KEY not set", {"input_tokens": 0, "output_tokens": 0}, 1
+        client = anthropic.Anthropic(api_key=api_key)
     
     prompt = f"""You are an expert code navigator. You have been asked to understand a repository by exploring the files directly.
 
