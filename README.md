@@ -6,10 +6,11 @@ Instead of scanning thousands of files, agents read a single `.repospec.json` fi
 
 ## Quick Start
 
-1. **Read the spec:** [SPEC.md](SPEC.md) — complete format definition with examples
-2. **Validate your `.repospec.json`:** Use `schema.json` with any JSON Schema validator
-3. **Generate from code:** See `tools/gen-repospec/` for reference implementations
-4. **Examples:** Check `examples/` for sample `.repospec.json` files for different project types
+1. **Understand the format:** [SPEC.md](SPEC.md) — complete format definition with examples
+2. **Agent using `.repospec.json`?** [AGENT_DISCOVERY_GUIDE.md](AGENT_DISCOVERY_GUIDE.md) — how agents discover, understand, and use the metadata
+3. **Generate `.repospec.json`:** [PROMPT.md](PROMPT.md) — prompts to generate metadata from your repo
+4. **Validate your `.repospec.json`:** Use `schema.json` with any JSON Schema validator
+5. **Examples:** Check `examples/` for sample `.repospec.json` files for different project types
 
 ## The Problem
 

@@ -109,6 +109,19 @@ Runs the full benchmark twice — once with each auth method — for direct comp
 ```
 Generates separate results files: `RESULTS-api_key.md` and `RESULTS-oauth.md`
 
+## How Agents Discover `.repospec.json`
+
+The benchmark agents are instructed to:
+
+1. **Look for `.repospec.json` at the repository root**
+2. **Validate it** (check for `"schema": "repospec/v1"`)
+3. **Use it as a map** to guide their exploration
+4. **Verify details** against actual code
+
+This mirrors how real agents (Claude, GitHub Copilot, etc.) would discover and use `.repospec.json` in the wild.
+
+For detailed guidance on agent discovery, see [AGENT_DISCOVERY_GUIDE.md](../AGENT_DISCOVERY_GUIDE.md).
+
 ## How to Interpret Results
 
 Review the logs manually:
