@@ -1,0 +1,285 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "repospec",
+  "description": "A standard metadata format for AI agents to efficiently navigate and understand repository structure",
+  "type": "object",
+  "required": ["schema", "name"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "type": "string",
+      "pattern": "^repospec/v\\d+$",
+      "description": "Schema version identifier (e.g., 'repospec/v1')"
+    },
+    "name": {
+      "type": "string",
+      "description": "Repository or project name"
+    },
+    "version": {
+      "type": "string",
+      "description": "Project version (semantic versioning recommended)"
+    },
+    "description": {
+      "type": "string",
+      "description": "Short description of the project"
+    },
+    "repository": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL of the repository (GitHub, GitLab, etc.)"
+    },
+    "license": {
+      "type": "string",
+      "description": "License identifier (SPDX recommended)"
+    },
+    "summary": {
+      "type": "string",
+      "description": "One-line summary: what is this repo, what does it do?"
+    },
+    "entrypoints": {
+      "type": "array",
+      "description": "Where execution starts; entry points into the system",
+      "items": {
+        "type": "object",
+        "required": ["name", "kind", "path", "purpose"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Human-readable name of the entry point"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "service",
+              "cli",
+              "library",
+              "worker",
+              "webhook",
+              "lambda",
+              "batch",
+              "middleware",
+              "other"
+            ],
+            "description": "Type of entry point"
+          },
+          "path": {
+            "type": "string",
+            "description": "Repo-relative path to the main file or directory"
+          },
+          "start": {
+            "type": "string",
+            "description": "Command to run it locally (e.g., 'make run-gateway')"
+          },
+          "purpose": {
+            "type": "string",
+            "description": "One sentence: what does this do, where does it fit?"
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Optional labels"
+          }
+        }
+      }
+    },
+    "modules": {
+      "type": "array",
+      "description": "Logical modules or packages and their purpose",
+      "items": {
+        "type": "object",
+        "required": ["id", "path", "purpose"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier within this repo (used in depends_on)"
+          },
+          "path": {
+            "type": "string",
+            "description": "Repo-relative directory path"
+          },
+          "purpose": {
+            "type": "string",
+            "description": "What does this module do? What problem does it solve?"
+          },
+          "depends_on": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "IDs of modules this depends on"
+          },
+          "key_files": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Repo-relative paths to important files in this module"
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Optional labels"
+          }
+        }
+      }
+    },
+    "patterns": {
+      "type": "array",
+      "description": "Cross-cutting concerns and conventions",
+      "items": {
+        "type": "object",
+        "required": ["concern", "defined_in"],
+        "additionalProperties": false,
+        "properties": {
+          "concern": {
+            "type": "string",
+            "description": "Name of the cross-cutting concern (auth, logging, error-handling, etc.)"
+          },
+          "defined_in": {
+            "type": "string",
+            "description": "Repo-relative path where the pattern is defined"
+          },
+          "applied_via": {
+            "type": "string",
+            "description": "How/where the pattern is used"
+          },
+          "convention": {
+            "type": "string",
+            "description": "Human-readable description of the pattern/practice"
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Labels for grouping (security, observability, performance, etc.)"
+          },
+          "note": {
+            "type": "string",
+            "description": "Additional context or warnings"
+          }
+        }
+      }
+    },
+    "key_files": {
+      "type": "object",
+      "description": "Important files by semantic category",
+      "additionalProperties": {
+        "oneOf": [
+          { "type": "string" },
+          {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        ]
+      }
+    },
+    "features": {
+      "type": "array",
+      "description": "Feature flows: user-facing capabilities traced through the code",
+      "items": {
+        "type": "object",
+        "required": ["name", "description", "flow"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the feature"
+          },
+          "description": {
+            "type": "string",
+            "description": "What does it do?"
+          },
+          "flow": {
+            "type": "array",
+            "description": "Sequence of steps through the code",
+            "items": {
+              "type": "object",
+              "required": ["step", "file"],
+              "additionalProperties": false,
+              "properties": {
+                "step": {
+                  "type": "string",
+                  "description": "Label (entry, handler, logic, persistence, etc.)"
+                },
+                "file": {
+                  "type": "string",
+                  "description": "Repo-relative path"
+                },
+                "fn": {
+                  "type": "string",
+                  "description": "Function/symbol name (stable anchor)"
+                },
+                "note": {
+                  "type": "string",
+                  "description": "Additional context"
+                }
+              }
+            }
+          },
+          "tests": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Repo-relative paths to test files covering this feature"
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Labels (customer-facing, critical, performance-sensitive, etc.)"
+          }
+        }
+      }
+    },
+    "testing": {
+      "type": "object",
+      "description": "Test structure and conventions",
+      "additionalProperties": true,
+      "properties": {
+        "unit": {
+          "type": "string",
+          "description": "Where and how unit tests are organized"
+        },
+        "integration": {
+          "type": "string",
+          "description": "Where and how integration tests are organized"
+        },
+        "fixtures": {
+          "type": "string",
+          "description": "Where test data and fixtures live"
+        },
+        "run": {
+          "type": "string",
+          "description": "Command to run all tests"
+        }
+      }
+    },
+    "dependencies": {
+      "type": "array",
+      "description": "Notable third-party dependencies",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Package/library name"
+          },
+          "why": {
+            "type": "string",
+            "description": "Why is this dependency important? What role does it play?"
+          },
+          "version": {
+            "type": "string",
+            "description": "Pinned version (optional)"
+          }
+        }
+      }
+    },
+    "goals": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "High-level project goals"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Additional project-level notes or context"
+    }
+  }
+}

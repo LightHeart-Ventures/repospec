@@ -1,0 +1,201 @@
+{
+  "schema": "repospec/v1",
+  "name": "go-microservice",
+  "version": "1.0.0",
+  "description": "Example: A Go microservice (gRPC + HTTP gateway)",
+  "summary": "Go microservice with gRPC endpoints, HTTP gateway, and PostgreSQL backend",
+
+  "entrypoints": [
+    {
+      "name": "api-gateway",
+      "kind": "service",
+      "path": "cmd/gateway/main.go",
+      "start": "make run-gateway",
+      "purpose": "HTTP gateway; translates HTTP requests to gRPC calls"
+    },
+    {
+      "name": "user-service",
+      "kind": "service",
+      "path": "cmd/user-service/main.go",
+      "start": "make run-user-service",
+      "purpose": "gRPC service; manages user accounts and profiles"
+    },
+    {
+      "name": "migrate",
+      "kind": "cli",
+      "path": "cmd/migrate/main.go",
+      "purpose": "Database migration tool"
+    }
+  ],
+
+  "modules": [
+    {
+      "id": "auth",
+      "path": "internal/auth/",
+      "purpose": "JWT issuance, validation, and RBAC middleware",
+      "depends_on": ["store"],
+      "key_files": [
+        "internal/auth/jwt.go",
+        "internal/auth/middleware.go",
+        "internal/auth/rbac.go"
+      ]
+    },
+    {
+      "id": "user",
+      "path": "internal/user/",
+      "purpose": "User domain logic; account creation, profile management",
+      "depends_on": ["store", "auth"],
+      "key_files": [
+        "internal/user/service.go",
+        "internal/user/handler.go"
+      ]
+    },
+    {
+      "id": "store",
+      "path": "internal/store/",
+      "purpose": "Data access layer; sqlc-generated queries + repository pattern",
+      "depends_on": [],
+      "key_files": [
+        "internal/store/db.go",
+        "internal/store/queries.sql"
+      ]
+    },
+    {
+      "id": "api",
+      "path": "internal/api/",
+      "purpose": "gRPC service definitions and HTTP gateway integration",
+      "depends_on": ["user", "auth"],
+      "key_files": [
+        "proto/user/v1/user.proto",
+        "internal/api/server.go"
+      ]
+    }
+  ],
+
+  "patterns": [
+    {
+      "concern": "auth",
+      "defined_in": "internal/auth/middleware.go",
+      "applied_via": "Wrap gRPC interceptors and HTTP middleware; auth.Require()",
+      "convention": "All authenticated endpoints use auth.Require() or auth middleware",
+      "tags": ["security"]
+    },
+    {
+      "concern": "error-handling",
+      "defined_in": "internal/errs/errs.go",
+      "convention": "Wrap errors with errs.Wrap(); convert to gRPC status codes in handlers",
+      "tags": ["error-handling"]
+    },
+    {
+      "concern": "logging",
+      "defined_in": "internal/log/log.go",
+      "convention": "Structured zap logger; extract from context: log.From(ctx)",
+      "tags": ["observability"]
+    },
+    {
+      "concern": "database-transactions",
+      "defined_in": "internal/store/tx.go",
+      "convention": "Wrap mutations in transactions; pass tx through context",
+      "tags": ["data-integrity"]
+    }
+  ],
+
+  "key_files": {
+    "config": [
+      "config/default.yaml",
+      "internal/config/config.go"
+    ],
+    "migrations": ["db/migrations/"],
+    "api_schema": [
+      "proto/user/v1/user.proto",
+      "openapi.yaml"
+    ],
+    "ci": [".github/workflows/ci.yml"],
+    "build": ["Makefile", "go.mod"],
+    "docker": ["Dockerfile", "docker-compose.yml"]
+  },
+
+  "features": [
+    {
+      "name": "user-registration",
+      "description": "New user creates an account with email and password",
+      "flow": [
+        {
+          "step": "entry",
+          "file": "proto/user/v1/user.proto",
+          "fn": "CreateUserRequest"
+        },
+        {
+          "step": "gateway-handler",
+          "file": "cmd/gateway/handlers/user.go",
+          "fn": "handleCreateUser"
+        },
+        {
+          "step": "grpc-service",
+          "file": "internal/api/user_service.go",
+          "fn": "CreateUser"
+        },
+        {
+          "step": "business-logic",
+          "file": "internal/user/service.go",
+          "fn": "Register"
+        },
+        {
+          "step": "persistence",
+          "file": "internal/store/users.go",
+          "fn": "InsertUser"
+        }
+      ],
+      "tests": [
+        "internal/user/service_test.go",
+        "test/integration/user_test.go"
+      ],
+      "tags": ["customer-facing", "critical"]
+    },
+    {
+      "name": "login",
+      "description": "User authenticates with email/password and receives JWT",
+      "flow": [
+        {
+          "step": "handler",
+          "file": "cmd/gateway/handlers/auth.go",
+          "fn": "handleLogin"
+        },
+        {
+          "step": "auth-service",
+          "file": "internal/auth/service.go",
+          "fn": "Authenticate"
+        },
+        {
+          "step": "token-generation",
+          "file": "internal/auth/jwt.go",
+          "fn": "IssueToken"
+        }
+      ],
+      "tests": ["internal/auth/jwt_test.go"],
+      "tags": ["security", "critical"]
+    }
+  ],
+
+  "testing": {
+    "unit": "co-located *_test.go files",
+    "integration": "test/integration/ (requires docker-compose.test.yml)",
+    "fixtures": "test/fixtures/ (SQL seeds, mock data)",
+    "run": "make test && make test-integration"
+  },
+
+  "dependencies": [
+    {
+      "name": "sqlc",
+      "why": "Compile-time SQL→Go code generation; edit .sql not generated Go"
+    },
+    {
+      "name": "protobuf",
+      "why": "gRPC service definitions; compile with: make gen-proto"
+    },
+    {
+      "name": "grpc-gateway",
+      "why": "Translates HTTP requests to gRPC; enables REST API alongside gRPC"
+    }
+  ]
+}

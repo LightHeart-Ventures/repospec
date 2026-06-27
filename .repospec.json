@@ -1,0 +1,122 @@
+{
+  "schema": "repospec/v1",
+  "name": "repospec",
+  "description": "A standard metadata format for AI agents to efficiently navigate and understand repository structure, architecture, and code organization.",
+  "version": "0.1.0",
+  "repository": "https://github.com/LightHeart-Ventures/repospec",
+  "license": "MIT",
+
+  "summary": "Specification and tooling for .repospec.json — a machine-readable index optimized for agent orientation and code navigation at the module/feature level.",
+
+  "entrypoints": [
+    {
+      "name": "spec",
+      "kind": "documentation",
+      "path": "SPEC.md",
+      "purpose": "Complete specification for .repospec.json format"
+    },
+    {
+      "name": "schema",
+      "kind": "schema",
+      "path": "schema.json",
+      "purpose": "JSON Schema for validating .repospec.json files"
+    },
+    {
+      "name": "generator",
+      "kind": "tool",
+      "path": "tools/gen-repospec/",
+      "purpose": "Reference implementation for generating .repospec.json from code"
+    }
+  ],
+
+  "modules": [
+    {
+      "id": "spec",
+      "path": "docs/",
+      "purpose": "Specification documents, examples, and design rationale",
+      "key_files": ["SPEC.md", "docs/design.md", "docs/examples/"]
+    },
+    {
+      "id": "schema",
+      "path": "schema/",
+      "purpose": "JSON Schema definition and validation utilities",
+      "key_files": ["schema.json"]
+    },
+    {
+      "id": "tools",
+      "path": "tools/",
+      "purpose": "Reference implementations and tooling",
+      "key_files": ["tools/gen-repospec/", "tools/validate/"]
+    },
+    {
+      "id": "examples",
+      "path": "examples/",
+      "purpose": "Example .repospec.json files for different project types",
+      "key_files": ["examples/monorepo.json", "examples/go-service.json", "examples/node-app.json"]
+    }
+  ],
+
+  "patterns": [
+    {
+      "concern": "validation",
+      "defined_in": "schema/schema.json",
+      "applied_via": "Use JSON Schema validator; see tools/validate/",
+      "tags": ["quality", "ci"]
+    },
+    {
+      "concern": "generation",
+      "defined_in": "tools/gen-repospec/",
+      "applied_via": "Run generator on code to produce mechanical sections; merge with hand-written annotations",
+      "tags": ["tooling", "maintenance"]
+    }
+  ],
+
+  "key_files": {
+    "spec": ["SPEC.md"],
+    "schema": ["schema/schema.json"],
+    "examples": ["examples/"],
+    "ci": [".github/workflows/"]
+  },
+
+  "features": [
+    {
+      "name": "specification",
+      "description": "Complete format definition with semantics and design principles",
+      "files": ["SPEC.md", "docs/design.md"]
+    },
+    {
+      "name": "schema-validation",
+      "description": "JSON Schema for validating .repospec.json files",
+      "files": ["schema/schema.json", "tools/validate/"]
+    },
+    {
+      "name": "code-generation",
+      "description": "Reference generator to produce mechanical sections from code",
+      "files": ["tools/gen-repospec/"]
+    },
+    {
+      "name": "examples",
+      "description": "Example .repospec.json for common project types",
+      "files": ["examples/"]
+    }
+  ],
+
+  "testing": {
+    "unit": "tests/ directory with validation and generation tests",
+    "run": "make test / (language-specific test runner once tool language is chosen)"
+  },
+
+  "dependencies": [
+    {
+      "name": "json-schema",
+      "why": "Validation standard; .repospec.json validates against JSON Schema"
+    }
+  ],
+
+  "goals": [
+    "Define a minimal, practical standard for agent-oriented repo metadata",
+    "Reduce agent time spent on blind search/scan in codebases",
+    "Provide tooling to generate and maintain .repospec.json",
+    "Enable agent-to-agent knowledge transfer within and across repos"
+  ]
+}

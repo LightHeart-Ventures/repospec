@@ -1,0 +1,192 @@
+{
+  "schema": "repospec/v1",
+  "name": "node-webapp",
+  "version": "1.0.0",
+  "description": "Example: A Node.js web app (Express + React + PostgreSQL)",
+  "summary": "Full-stack Node.js web application with Express backend, React frontend, and PostgreSQL database",
+
+  "entrypoints": [
+    {
+      "name": "web-server",
+      "kind": "service",
+      "path": "server/index.js",
+      "start": "npm run dev",
+      "purpose": "Express.js HTTP server; serves API and frontend"
+    },
+    {
+      "name": "worker",
+      "kind": "worker",
+      "path": "server/worker.js",
+      "start": "npm run worker",
+      "purpose": "Background job processor (Bull queue)"
+    }
+  ],
+
+  "modules": [
+    {
+      "id": "api",
+      "path": "server/routes/",
+      "purpose": "Express route handlers; REST API endpoints",
+      "depends_on": ["auth", "db"],
+      "key_files": [
+        "server/routes/index.js",
+        "server/routes/auth.js",
+        "server/routes/users.js"
+      ]
+    },
+    {
+      "id": "auth",
+      "path": "server/auth/",
+      "purpose": "JWT and session management middleware",
+      "depends_on": ["db"],
+      "key_files": [
+        "server/auth/middleware.js",
+        "server/auth/jwt.js"
+      ]
+    },
+    {
+      "id": "db",
+      "path": "server/db/",
+      "purpose": "Database models and queries (Sequelize ORM)",
+      "depends_on": [],
+      "key_files": [
+        "server/db/index.js",
+        "server/db/models/",
+        "server/db/migrations/"
+      ]
+    },
+    {
+      "id": "frontend",
+      "path": "client/src/",
+      "purpose": "React UI components and pages",
+      "depends_on": [],
+      "key_files": [
+        "client/src/index.js",
+        "client/src/pages/",
+        "client/src/components/"
+      ]
+    }
+  ],
+
+  "patterns": [
+    {
+      "concern": "auth",
+      "defined_in": "server/auth/middleware.js",
+      "applied_via": "router.use(auth.require()) or @auth decorator on controllers",
+      "convention": "Protected routes wrap the handler with auth.require()",
+      "tags": ["security"]
+    },
+    {
+      "concern": "error-handling",
+      "defined_in": "server/utils/errors.js",
+      "convention": "Throw AppError or ValidationError; caught by error middleware",
+      "tags": ["error-handling"]
+    },
+    {
+      "concern": "logging",
+      "defined_in": "server/utils/logger.js",
+      "convention": "Use winston logger; structured logs with request IDs",
+      "tags": ["observability"]
+    },
+    {
+      "concern": "api-versioning",
+      "defined_in": "server/routes/index.js",
+      "convention": "Routes prefixed with /api/v1/ or /api/v2/; never break old versions",
+      "tags": ["api-design"]
+    }
+  ],
+
+  "key_files": {
+    "config": [
+      ".env.example",
+      "server/config.js"
+    ],
+    "migrations": ["server/db/migrations/"],
+    "api_schema": ["docs/api.md", "openapi.yaml"],
+    "ci": [".github/workflows/ci.yml"],
+    "build": ["package.json", "server.js"],
+    "docker": ["Dockerfile", "docker-compose.yml"]
+  },
+
+  "features": [
+    {
+      "name": "user-signup",
+      "description": "New user creates an account",
+      "flow": [
+        {
+          "step": "frontend",
+          "file": "client/src/pages/Signup.jsx",
+          "fn": "Signup"
+        },
+        {
+          "step": "api-handler",
+          "file": "server/routes/auth.js",
+          "fn": "POST /auth/signup"
+        },
+        {
+          "step": "auth-service",
+          "file": "server/auth/service.js",
+          "fn": "register"
+        },
+        {
+          "step": "database",
+          "file": "server/db/models/User.js",
+          "fn": "User.create"
+        }
+      ],
+      "tests": [
+        "server/__tests__/auth.test.js",
+        "client/src/__tests__/pages/Signup.test.jsx"
+      ],
+      "tags": ["customer-facing", "critical"]
+    },
+    {
+      "name": "async-email-send",
+      "description": "Send welcome email to new user asynchronously",
+      "flow": [
+        {
+          "step": "queue-job",
+          "file": "server/auth/service.js",
+          "fn": "register (calls emailQueue.add)"
+        },
+        {
+          "step": "job-processor",
+          "file": "server/jobs/email.js",
+          "fn": "sendWelcomeEmail"
+        },
+        {
+          "step": "email-service",
+          "file": "server/services/email.js",
+          "fn": "send"
+        }
+      ],
+      "tags": ["background-job"]
+    }
+  ],
+
+  "testing": {
+    "unit": "server/__tests__/ and client/src/__tests__/",
+    "integration": "test/integration/ (requires docker-compose.test.yml)",
+    "fixtures": "test/fixtures/ (seed data)",
+    "run": "npm test && npm run test:integration"
+  },
+
+  "dependencies": [
+    {
+      "name": "express",
+      "why": "HTTP server framework"
+    },
+    {
+      "name": "sequelize",
+      "why": "ORM for PostgreSQL; models defined in server/db/models/"
+    },
+    {
+      "name": "passport",
+      "why": "Authentication middleware; strategies in server/auth/"
+    },
+    {
+      "name": "bull",
+      "why": "Job queue for async tasks (email, exports, etc.)"
+    }
+  ]
+}
