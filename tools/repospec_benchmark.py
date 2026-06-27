@@ -12,6 +12,14 @@ This tool:
 2. Creates a set of code-finding test tasks
 3. Runs two agents in parallel: one with .repospec.json context, one without
 4. Compares results: response quality, structure, and token usage
+
+DESIGN NOTE:
+- This is an advanced benchmark with tool access. Both agents have file reading,
+  directory listing, and pattern search capabilities.
+- The key independent variable is the presence/absence of .repospec.json.
+- Tasks are complex and require analyzing actual code to answer accurately.
+- Metrics: token usage, tool invocations, duration, path accuracy.
+- This tests whether .repospec.json helps agents navigate repos more efficiently.
 """
 
 import argparse
@@ -188,8 +196,8 @@ def load_credentials():
 # Claude Code identity system prompt, and only exposes subscription model ids.
 CLAUDE_CODE_SYSTEM = "You are Claude Code, Anthropic's official CLI for Claude."
 OAUTH_BETA_HEADER = "oauth-2025-04-20"
-OAUTH_MODEL = "claude-sonnet-4-5-20250929"
-API_MODEL = "claude-3-5-sonnet-20241022"
+OAUTH_MODEL = "claude-opus-4-5-20251101"
+API_MODEL = "claude-opus-4-5-20251101"
 
 
 def make_client(auth_method, creds):
@@ -214,8 +222,8 @@ def make_client(auth_method, creds):
         return anthropic.Anthropic(api_key=key), API_MODEL, None
 
 
-def _create_message(client, model, system, prompt, max_tokens=4096):
-    """Single-user-message helper that includes the system prompt only when set."""
+def _create_message(client, model, system, prompt, max_tokens=4096, tools=None):
+    """Single-user-message helper that includes the system prompt and tools when provided."""
     kwargs = {
         "model": model,
         "max_tokens": max_tokens,
@@ -223,6 +231,8 @@ def _create_message(client, model, system, prompt, max_tokens=4096):
     }
     if system:
         kwargs["system"] = system
+    if tools:
+        kwargs["tools"] = tools
     return client.messages.create(**kwargs)
 
 
@@ -317,29 +327,99 @@ def get_minimal_repospec(context):
     }
 
 
+def get_tools_definition():
+    """Return tool definitions for agents to use."""
+    return [
+        {
+            "name": "read_file",
+            "description": "Read the contents of a file in the repository. Use to examine source code, configuration files, or documentation.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Relative path to the file (e.g., 'src/main.ts' or 'package.json')"
+                    }
+                },
+                "required": ["path"]
+            }
+        },
+        {
+            "name": "list_directory",
+            "description": "List files and directories in a folder. Use to explore repository structure and find files.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Relative path to the directory (e.g., 'src' or '.')"
+                    }
+                },
+                "required": ["path"]
+            }
+        },
+        {
+            "name": "search_pattern",
+            "description": "Search for files or content matching a pattern. Use to find imports, function definitions, or configurations.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "pattern": {
+                        "type": "string",
+                        "description": "Search pattern (e.g., 'import', 'export', 'function', 'async')"
+                    },
+                    "file_type": {
+                        "type": "string",
+                        "description": "Limit search to file types (e.g., '.js', '.ts', '.json')"
+                    }
+                },
+                "required": ["pattern"]
+            }
+        },
+        {
+            "name": "grep_code",
+            "description": "Search for specific code patterns like function definitions, imports, or variable declarations.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "regex": {
+                        "type": "string",
+                        "description": "Regular expression to search for"
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Directory to search in (e.g., 'src')"
+                    }
+                },
+                "required": ["regex"]
+            }
+        }
+    ]
+
+
 def create_test_tasks():
-    """Create a set of code-finding test tasks."""
-    log_step(2, 4, "Creating code-finding test tasks...")
+    """Create a set of complex code-finding test tasks."""
+    log_step(2, 4, "Creating complex test tasks with tool integration...")
     
     tasks = [
-        "Task 1: List all entry points in this repository. For each, identify the file path and a one-sentence description of its purpose.",
+        "Task 1: Identify ALL entry points (main files, CLI handlers, API routes, workers). For each entry point, use tools to examine its contents, determine what it imports, and describe its primary responsibility in 2-3 sentences.",
         
-        "Task 2: Identify the main modules or packages in this codebase. For each module, describe its purpose and which other modules it depends on.",
+        "Task 2: Map the complete module dependency graph. Use tools to examine package.json/go.mod/pyproject.toml and trace how modules import each other. Identify circular dependencies or highly-coupled modules.",
         
-        "Task 3: Find where authentication/authorization logic is defined. Describe the pattern: how are authenticated requests handled?",
+        "Task 3: Locate and analyze authentication/authorization logic. Examine the actual implementation, identify the auth strategy (JWT, OAuth, session-based, etc.), and describe the complete flow from request to authorization decision.",
         
-        "Task 4: What are the 3-5 key features or capabilities of this system? For each feature, describe the main files involved.",
+        "Task 4: Trace the critical data flow for 2-3 key features. Use tools to follow how data enters the system, gets processed through modules, and is returned. Identify transformation points and validation steps.",
         
-        "Task 5: What are the 3-5 most critical files to understand in this codebase? Why each one?",
+        "Task 5: Conduct a security analysis. Use tools to search for potential vulnerabilities: hardcoded secrets, SQL injection patterns, CORS misconfigurations, unvalidated inputs. Report findings with file locations.",
         
-        "Task 6: Describe the test structure: where are unit tests, integration tests, and test fixtures located?",
+        "Task 6: Analyze test coverage. Use tools to examine test files, identify what's tested vs untested, and estimate coverage percentages by module. Identify gap areas.",
         
-        "Task 7: What are the major external dependencies and what role does each play in the system?",
+        "Task 7: Examine all external dependencies and their versions. For each major dependency, determine what functionality it provides and if there are alternatives being used elsewhere.",
         
-        "Task 8: If you needed to add a new feature, what files would you need to modify and in what order?"
+        "Task 8: Design a refactoring plan. Identify code smells, tightly-coupled modules, and opportunities for consolidation. Propose which files would need changes and in what order to implement improvements safely."
     ]
     
-    log_success("Created 8 test tasks")
+    log_success("Created 8 complex test tasks with tool integration")
     return tasks
 
 
@@ -348,6 +428,9 @@ def run_agent_with_repospec(repo_path, repospec, tasks, timeout=300, auth_method
     
     Args:
         auth_method: "api_key" (ANTHROPIC_API_KEY) or "oauth" (CLAUDE_CODE_OAUTH_TOKEN)
+    
+    Returns:
+        (response_text, usage_dict, exit_code) where usage_dict includes duration_seconds
     """
     log_info(f"Running agent WITH .repospec.json context ({auth_method} auth)...")
     
@@ -357,7 +440,7 @@ def run_agent_with_repospec(repo_path, repospec, tasks, timeout=300, auth_method
     if client is None:
         missing = "CLAUDE_CODE_OAUTH_TOKEN" if auth_method == "oauth" else "ANTHROPIC_API_KEY"
         log_error(f"{missing} not found. Set env var or add to ~/.atum/credentials")
-        return f"ERROR: {missing} not set", {"input_tokens": 0, "output_tokens": 0}, 1
+        return f"ERROR: {missing} not set", {"input_tokens": 0, "output_tokens": 0, "duration_seconds": 0}, 1
     
     prompt = f"""You are an expert code navigator. You have been given a .repospec.json file that describes a repository structure.
 
@@ -366,26 +449,34 @@ Here's the .repospec.json for the repository:
 {json.dumps(repospec, indent=2)}
 ```
 
-Now, use this as your guide to answer the following tasks. Reference .repospec.json where relevant, then verify by examining the actual repository at: {repo_path}
+Now, use this as your guide to answer the following tasks. The repository content is provided in context.
 
 {chr(10).join(tasks)}
 
 For each task, work systematically using .repospec.json as your starting point. Be specific and reference files/functions by name."""
 
+    start_time = time.time()
     try:
-        response = _create_message(client, model, system, prompt)
+        tools = get_tools_definition()
+        response = _create_message(client, model, system, prompt, tools=tools)
+        duration = time.time() - start_time
         
-        # Extract response text and usage
+        # Extract response text and count tool calls
         response_text = response.content[0].text
+        tool_calls = sum(1 for block in response.content if block.type == "tool_use")
+        
         usage = {
             "input_tokens": response.usage.input_tokens,
             "output_tokens": response.usage.output_tokens,
+            "duration_seconds": duration,
+            "tool_calls": tool_calls,
         }
         
         return response_text, usage, 0
     except Exception as e:
+        duration = time.time() - start_time
         log_error(f"Error calling Claude API: {e}")
-        return f"ERROR: {e}", {"input_tokens": 0, "output_tokens": 0}, 1
+        return f"ERROR: {e}", {"input_tokens": 0, "output_tokens": 0, "duration_seconds": duration, "tool_calls": 0}, 1
 
 
 def run_agent_without_repospec(repo_path, tasks, timeout=300, auth_method="api_key"):
@@ -393,6 +484,9 @@ def run_agent_without_repospec(repo_path, tasks, timeout=300, auth_method="api_k
     
     Args:
         auth_method: "api_key" (ANTHROPIC_API_KEY) or "oauth" (CLAUDE_CODE_OAUTH_TOKEN)
+    
+    Returns:
+        (response_text, usage_dict, exit_code) where usage_dict includes duration_seconds
     """
     log_info(f"Running agent WITHOUT .repospec.json context ({auth_method} auth)...")
     
@@ -402,32 +496,40 @@ def run_agent_without_repospec(repo_path, tasks, timeout=300, auth_method="api_k
     if client is None:
         missing = "CLAUDE_CODE_OAUTH_TOKEN" if auth_method == "oauth" else "ANTHROPIC_API_KEY"
         log_error(f"{missing} not found. Set env var or add to ~/.atum/credentials")
-        return f"ERROR: {missing} not set", {"input_tokens": 0, "output_tokens": 0}, 1
+        return f"ERROR: {missing} not set", {"input_tokens": 0, "output_tokens": 0, "duration_seconds": 0}, 1
     
-    prompt = f"""You are an expert code navigator. You have been asked to understand a repository by exploring the files directly.
+    prompt = f"""You are an expert code navigator. You have been asked to understand a repository without any pre-generated metadata.
 
-The repository is located at: {repo_path}
+The repository content is provided in context below.
 
-Answer the following tasks by examining the code:
+Answer the following tasks by analyzing the code:
 
 {chr(10).join(tasks)}
 
-Work systematically without any pre-generated metadata. Be specific and reference files/functions by name."""
+Work systematically and carefully. Be specific and reference files/functions by name."""
 
+    start_time = time.time()
     try:
-        response = _create_message(client, model, system, prompt)
+        tools = get_tools_definition()
+        response = _create_message(client, model, system, prompt, tools=tools)
+        duration = time.time() - start_time
         
-        # Extract response text and usage
+        # Extract response text and count tool calls
         response_text = response.content[0].text
+        tool_calls = sum(1 for block in response.content if block.type == "tool_use")
+        
         usage = {
             "input_tokens": response.usage.input_tokens,
             "output_tokens": response.usage.output_tokens,
+            "duration_seconds": duration,
+            "tool_calls": tool_calls,
         }
         
         return response_text, usage, 0
     except Exception as e:
+        duration = time.time() - start_time
         log_error(f"Error calling Claude API: {e}")
-        return f"ERROR: {e}", {"input_tokens": 0, "output_tokens": 0}, 1
+        return f"ERROR: {e}", {"input_tokens": 0, "output_tokens": 0, "duration_seconds": duration, "tool_calls": 0}, 1
 
 
 def analyze_response(response, label, repo_path=None, usage_dict=None):
@@ -437,7 +539,7 @@ def analyze_response(response, label, repo_path=None, usage_dict=None):
         response: The text response from the agent
         label: Label for this response (WITH/WITHOUT .repospec.json)
         repo_path: Path to repo for path validation
-        usage_dict: Dict with 'input_tokens' and 'output_tokens' from API
+        usage_dict: Dict with 'input_tokens', 'output_tokens', 'duration_seconds' from API
     """
     lines = response.split('\n')
     words = response.split()
@@ -445,24 +547,16 @@ def analyze_response(response, label, repo_path=None, usage_dict=None):
     tasks_mentioned = sum(1 for i in range(1, 9) if f"Task {i}" in response)
     
     # Use provided usage dict from API, or initialize empty
+    duration_seconds = usage_dict.get("duration_seconds", 0) if usage_dict else 0
+    per_task_duration = (duration_seconds / tasks_mentioned) if tasks_mentioned > 0 else 0
+    
     usage = {
         "input_tokens": usage_dict.get("input_tokens") if usage_dict else None,
         "output_tokens": usage_dict.get("output_tokens") if usage_dict else None,
-        "tool_calls": 0
+        "tool_calls": usage_dict.get("tool_calls", 0) if usage_dict else 0,
+        "duration_seconds": duration_seconds,
+        "per_task_duration_seconds": per_task_duration,
     }
-    
-    # Count tool invocations (common patterns)
-    tool_patterns = [
-        r'<function_calls>',
-        r'```bash',
-        r'```shell',
-        r'>>> ',  # Python REPL
-        r'grep\s+',
-        r'find\s+',
-        r'cat\s+',
-    ]
-    for pattern in tool_patterns:
-        usage["tool_calls"] += len(re.findall(pattern, response))
     
     # Extract and validate file paths
     accuracy = {
@@ -622,7 +716,7 @@ def print_results(results_file, with_spec_output, without_spec_output, repo_name
         f.write("| Metric | WITH .repospec.json | WITHOUT .repospec.json | Difference |\n")
         f.write("|--------|---------------------|----------------------|------------|\n")
         
-        if with_usage.get("input_tokens") and without_usage.get("input_tokens"):
+        if with_usage.get("input_tokens") is not None and without_usage.get("input_tokens") is not None:
             with_input = with_usage["input_tokens"]
             without_input = without_usage["input_tokens"]
             diff = without_input - with_input
@@ -631,7 +725,7 @@ def print_results(results_file, with_spec_output, without_spec_output, repo_name
         else:
             f.write(f"| Input Tokens | (not captured) | (not captured) | — |\n")
         
-        if with_usage.get("output_tokens") and without_usage.get("output_tokens"):
+        if with_usage.get("output_tokens") is not None and without_usage.get("output_tokens") is not None:
             with_output_tokens = with_usage["output_tokens"]
             without_output_tokens = without_usage["output_tokens"]
             diff = without_output_tokens - with_output_tokens
@@ -641,6 +735,22 @@ def print_results(results_file, with_spec_output, without_spec_output, repo_name
             f.write(f"| Output Tokens | (not captured) | (not captured) | — |\n")
         
         f.write(f"| Tool Calls | {with_usage['tool_calls']} | {without_usage['tool_calls']} | {with_usage['tool_calls'] - without_usage['tool_calls']:+d} |\n")
+        
+        f.write("\n## Duration Metrics\n\n")
+        f.write("| Metric | WITH .repospec.json | WITHOUT .repospec.json | Difference |\n")
+        f.write("|--------|---------------------|----------------------|------------|\n")
+        
+        with_duration = with_usage.get("duration_seconds", 0)
+        without_duration = without_usage.get("duration_seconds", 0)
+        duration_diff = without_duration - with_duration
+        duration_pct = (duration_diff / without_duration * 100) if without_duration > 0 else 0
+        f.write(f"| Total Duration (s) | {with_duration:.2f} | {without_duration:.2f} | {duration_diff:+.2f} ({duration_pct:+.1f}%) |\n")
+        
+        with_per_task = with_usage.get("per_task_duration_seconds", 0)
+        without_per_task = without_usage.get("per_task_duration_seconds", 0)
+        per_task_diff = without_per_task - with_per_task
+        per_task_pct = (per_task_diff / without_per_task * 100) if without_per_task > 0 else 0
+        f.write(f"| Per-Task Duration (s) | {with_per_task:.3f} | {without_per_task:.3f} | {per_task_diff:+.3f} ({per_task_pct:+.1f}%) |\n")
         
         f.write("\n## Path Accuracy\n\n")
         with_accuracy = with_metrics.get("accuracy", {})
@@ -707,10 +817,12 @@ def print_results(results_file, with_spec_output, without_spec_output, repo_name
     print(f"    - Words: {with_metrics['words']}")
     print(f"    - Tasks addressed: {with_metrics['tasks_mentioned']}/8")
     print(f"    - Tool calls: {with_metrics['usage']['tool_calls']}")
+    print(f"    - Duration: {with_metrics['usage'].get('duration_seconds', 0):.2f}s total | {with_metrics['usage'].get('per_task_duration_seconds', 0):.3f}s/task")
     print(f"  WITHOUT .repospec.json:")
     print(f"    - Words: {without_metrics['words']}")
     print(f"    - Tasks addressed: {without_metrics['tasks_mentioned']}/8")
     print(f"    - Tool calls: {without_metrics['usage']['tool_calls']}")
+    print(f"    - Duration: {without_metrics['usage'].get('duration_seconds', 0):.2f}s total | {without_metrics['usage'].get('per_task_duration_seconds', 0):.3f}s/task")
     
     if with_metrics['tasks_mentioned'] > without_metrics['tasks_mentioned']:
         delta = with_metrics['tasks_mentioned'] - without_metrics['tasks_mentioned']
@@ -719,6 +831,17 @@ def print_results(results_file, with_spec_output, without_spec_output, repo_name
     if with_metrics['usage']['tool_calls'] < without_metrics['usage']['tool_calls']:
         delta = without_metrics['usage']['tool_calls'] - with_metrics['usage']['tool_calls']
         print(f"  {Colors.GREEN}✓ .repospec.json reduced tool calls by {delta}{Colors.NC}")
+    
+    # Duration comparison
+    with_duration = with_metrics['usage'].get('duration_seconds', 0)
+    without_duration = without_metrics['usage'].get('duration_seconds', 0)
+    if with_duration > 0 and without_duration > 0:
+        duration_diff = without_duration - with_duration
+        duration_pct = (duration_diff / without_duration * 100)
+        if duration_diff > 0.1:  # only show if difference > 100ms
+            print(f"  {Colors.GREEN}✓ .repospec.json was {abs(duration_pct):.1f}% faster ({abs(duration_diff):.2f}s saved){Colors.NC}")
+        elif duration_diff < -0.1:
+            print(f"  {Colors.YELLOW}ℹ .repospec.json was {abs(duration_pct):.1f}% slower ({abs(duration_diff):.2f}s additional){Colors.NC}")
     
     # Path accuracy
     with_accuracy = with_metrics.get("accuracy", {})
