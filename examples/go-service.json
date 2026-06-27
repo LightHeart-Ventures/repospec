@@ -184,6 +184,52 @@
     "run": "make test && make test-integration"
   },
 
+  "infrastructure": [
+    {
+      "name": "ci",
+      "kind": "ci",
+      "provider": "github-actions",
+      "path": ".github/workflows/ci.yml",
+      "purpose": "Lint, run unit + integration tests, and build on every push and PR",
+      "triggers": ["push", "pull_request"],
+      "tags": ["ci"]
+    },
+    {
+      "name": "release",
+      "kind": "cd",
+      "provider": "github-actions",
+      "path": ".github/workflows/release.yml",
+      "purpose": "Build and push the service image to ECR and deploy on tag",
+      "triggers": ["push: tags v*"],
+      "environments": ["production"],
+      "deploy": "git tag vX.Y.Z && git push --tags",
+      "tags": ["cd", "release"]
+    },
+    {
+      "name": "network",
+      "kind": "iac",
+      "provider": "terraform",
+      "path": "infra/terraform/network/",
+      "purpose": "VPC, subnets, and security groups",
+      "manages": ["aws_vpc", "aws_subnet", "aws_security_group"],
+      "environments": ["staging", "production"],
+      "deploy": "terraform -chdir=infra/terraform/network apply",
+      "tags": ["aws", "network"]
+    },
+    {
+      "name": "app-stack",
+      "kind": "iac",
+      "provider": "cloudformation",
+      "path": "infra/cloudformation/app.yaml",
+      "purpose": "ECS service, task definition, and ALB for the API gateway",
+      "manages": ["AWS::ECS::Service", "AWS::ElasticLoadBalancingV2::LoadBalancer"],
+      "depends_on": ["network"],
+      "environments": ["staging", "production"],
+      "deploy": "aws cloudformation deploy --template-file infra/cloudformation/app.yaml --stack-name api",
+      "tags": ["aws", "compute"]
+    }
+  ],
+
   "dependencies": [
     {
       "name": "sqlc",

@@ -249,6 +249,76 @@
         }
       }
     },
+    "infrastructure": {
+      "type": "array",
+      "description": "CI/CD pipelines, infrastructure-as-code, and deployment automation",
+      "items": {
+        "type": "object",
+        "required": ["name", "kind", "path", "purpose"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Human-readable name of the component (e.g., ci, release, network)"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ci",
+              "cd",
+              "iac",
+              "deploy",
+              "pipeline",
+              "container",
+              "orchestration",
+              "other"
+            ],
+            "description": "What this is: CI, CD, infrastructure-as-code, deploy automation, etc."
+          },
+          "provider": {
+            "type": "string",
+            "description": "Tool/platform: github-actions, gitlab-ci, terraform, cloudformation, pulumi, cdk, ansible, kubernetes, helm, docker, etc."
+          },
+          "path": {
+            "type": "string",
+            "description": "Repo-relative path to the workflow file, module directory, or manifest"
+          },
+          "purpose": {
+            "type": "string",
+            "description": "One sentence: what does this build, deploy, or provision?"
+          },
+          "triggers": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "What sets a CI/CD pipeline running (push, pull_request, schedule, tag patterns, manual dispatch)"
+          },
+          "manages": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "For IaC: the resource types provisioned (e.g., aws_vpc, AWS::ECS::Service)"
+          },
+          "environments": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Target environments (staging, production, preview)"
+          },
+          "deploy": {
+            "type": "string",
+            "description": "Command to run/apply it locally (e.g., terraform apply, helm upgrade)"
+          },
+          "depends_on": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Names of other infrastructure components this relies on"
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Labels for grouping (aws, ci, release, network, etc.)"
+          }
+        }
+      }
+    },
     "dependencies": {
       "type": "array",
       "description": "Notable third-party dependencies",

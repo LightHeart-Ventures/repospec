@@ -18,6 +18,7 @@ An agent drops a single `.repospec.json` at the repo root and gets a curated ind
 | `key_files` | Where are config, migrations, CI, API schemas? |
 | `features` | How does a user-facing flow move through the code, end to end? |
 | `testing` | How are tests organized and run? |
+| `infrastructure` | What are the CI/CD pipelines and infrastructure-as-code (Terraform, CloudFormation, deploy automation)? |
 | `dependencies` | Which third-party libs matter, and why? |
 
 All paths are repo-relative; all references use stable anchors (function names, not line numbers).
