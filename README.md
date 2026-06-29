@@ -54,7 +54,7 @@ We ran the bundled benchmark on [**Ghost**](https://github.com/TryGhost/Ghost) (
    make examples          # validates everything in examples/
    ```
 3. **Commit** it to the repo root so every agent and teammate benefits.
-4. **Maintain** it — auto-generate the mechanical sections (paths, imports) in CI; hand-write the rationale once and update it as the code evolves.
+4. **Maintain** it — auto-generate the mechanical sections (paths, imports) in CI; hand-write the rationale once and update it as the code evolves. To regenerate it automatically on structurally-significant commits, follow [CI_AUTOMATION.md](CI_AUTOMATION.md).
 
 Agents discovering a `.repospec.json` for the first time should read **[AGENT_DISCOVERY_GUIDE.md](AGENT_DISCOVERY_GUIDE.md)** — how to find, validate, use, and sanity-check the metadata.
 
@@ -97,6 +97,7 @@ From this one file an agent knows how to run the service, which modules exist an
 | [SPEC.md](SPEC.md) | Complete format definition with examples and the maintenance strategy |
 | [schema.json](schema.json) | JSON Schema — validate any `.repospec.json` against it |
 | [PROMPT.md](PROMPT.md) | Prompts to generate (and discover) `.repospec.json` |
+| [CI_AUTOMATION.md](CI_AUTOMATION.md) | Prompt + reference workflow to regenerate `.repospec.json` in CI on worthy commits |
 | [AGENT_DISCOVERY_GUIDE.md](AGENT_DISCOVERY_GUIDE.md) | How agents find, interpret, and verify the metadata |
 | [`examples/`](examples/) | Sample `.repospec.json` files (Go service, Node app) |
 | [`tools/`](tools/README.md) | Reference benchmark that measures the impact on agent navigation |

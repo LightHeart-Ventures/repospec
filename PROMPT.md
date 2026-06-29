@@ -5,6 +5,8 @@ This document contains prompts for different tasks related to `.repospec.json`:
 2. **Generation Prompt** — for creating `.repospec.json` from scratch
 3. **Maintenance Prompt** — for keeping `.repospec.json` up-to-date
 
+For automating regeneration in CI (a GitHub Actions workflow that rebuilds `.repospec.json` on "worthy" commits), see **[CI_AUTOMATION.md](CI_AUTOMATION.md)**.
+
 **Before using any of these prompts**, read the [Agent Discovery & Usage Guide](AGENT_DISCOVERY_GUIDE.md) for context.
 
 ---
@@ -59,8 +61,6 @@ Now proceed with your task. Start by reading the `.repospec.json` file at the re
 ## Prompt 2: Generation Prompt (Creating `.repospec.json`)
 
 Use this prompt to instruct an agent to **create a new `.repospec.json` file** for a repository that doesn't have one.
-
-```
 
 ```
 You are generating a `.repospec.json` file for a repository.
@@ -259,6 +259,7 @@ Use the repospec prompt to generate `.repospec.json` for this repo.
 
 - [Full Specification](SPEC.md)
 - [JSON Schema](schema.json)
+- [CI Automation Prompt](CI_AUTOMATION.md)
 - [Examples](examples/)
 - [GitHub Repository](https://github.com/LightHeart-Ventures/repospec)
 
